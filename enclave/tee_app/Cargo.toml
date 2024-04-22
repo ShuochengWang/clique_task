@@ -1,0 +1,21 @@
+[package]
+name = "tee_app"
+version = "1.0.0"
+edition = "2021"
+authors = ["Shuocheng Wang <wangshch5@outlook.com>"]
+
+[dependencies]
+neo4rs = "0.7.1"
+tokio = { version = "1", features = ["rt", "macros"] }
+uuid = { version = "1.8", features = ["v4"] }
+futures = "0.3.30"
+dotenv = "0.15.0"
+simple-cypher = { path = "../../crates/simple-cypher" }
+cfg-if = "1.0.0"
+libc = "0.2"
+sgx_types = "1.1.2"
+soft-aes = "0.2.0"
+blake3 = "1.5.1"
+anyhow = "1.0"
+base64 = "0.22.0"
+log = "0.4"

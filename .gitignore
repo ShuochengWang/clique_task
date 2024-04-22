@@ -1,0 +1,6 @@
+.env
+*.crt
+*.key
+Cargo.lock
+neo4j/data
+neo4j/logs

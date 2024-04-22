@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j
+    container_name: neo4j
+    env_file:
+      - .env
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+      - ./neo4j/certificates:/ssl
+    environment:
+      - NEO4J_AUTH=${NEO4J_AUTH}
+      - NEO4J_dbms_connector_bolt_enabled=true
+      - NEO4J_dbms_ssl_policy_bolt_enabled=true
+      - NEO4J_dbms_ssl_policy_bolt_base__directory=/ssl/bolt
+
+  occlum:
+    image: occlum/occlum:latest-ubuntu20.04
+    container_name: occlum
+    volumes:
+      - type: bind
+        source: ./
+        target: /root/code
+    stdin_open: true
+    tty: true
