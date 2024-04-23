@@ -3,9 +3,19 @@ use crate::graph::EncryptedGraph;
 
 use anyhow::Result;
 use dotenv::dotenv;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls_pemfile::{certs, read_all};
 use simple_cypher::*;
+use tokio::io::{copy, sink, split, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio_rustls::{rustls, TlsAcceptor};
 
 use std::env;
+use std::fs::File;
+use std::io::{self, BufReader};
+use std::net::ToSocketAddrs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub async fn start_server() -> Result<()> {
     dotenv().ok();
@@ -16,10 +26,40 @@ pub async fn start_server() -> Result<()> {
 
     let graph = EncryptedGraph::new(uri, user, pass).await?;
 
-    // test_CRUD(&graph).await.unwrap();
-    // test_find_shortest_path(&graph).await.unwrap();
+    test_CRUD(&graph).await.unwrap();
+    test_find_shortest_path(&graph).await.unwrap();
+
+    let addr = "127.0.0.1:8080"
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+    let certs = load_certs("/server.crt")?;
+    let key = load_keys("/server.key")?;
+
+    let server_config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+    println!("!!!!!!!!!");
 
     Ok(())
+}
+
+fn load_certs(path: &str) -> io::Result<Vec<CertificateDer<'static>>> {
+    certs(&mut BufReader::new(File::open(path)?)).collect()
+}
+
+fn load_keys(path: &str) -> Result<PrivateKeyDer<'static>> {
+    for item in read_all(&mut BufReader::new(File::open(path)?)) {
+        match item.unwrap() {
+            rustls_pemfile::Item::Pkcs1Key(key) => return Ok(key.into()),
+            rustls_pemfile::Item::Pkcs8Key(key) => return Ok(key.into()),
+            rustls_pemfile::Item::Sec1Key(key) => return Ok(key.into()),
+            _ => return Err(anyhow::anyhow!("invalid key")),
+        }
+    }
+    Err(anyhow::anyhow!("there is no key"))
 }
 
 async fn test_CRUD(graph: &EncryptedGraph) -> Result<()> {
