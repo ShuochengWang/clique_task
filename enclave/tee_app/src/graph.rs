@@ -3,12 +3,14 @@ use simple_cypher::*;
 
 use crate::crypto::Crypto;
 
+use std::collections::{HashMap, VecDeque};
+
 pub const MAGIC_HASH_KEY: &str = "hash";
 pub const MAGIC_UID_KEY: &str = "uid";
 
 const NODE_VAR_NAME: &str = "n";
-const NEXT_NODE_VAR_NAME: &str = "m";
 const RELATION_VAR_NAME: &str = "r";
+const NEXT_NODE_VAR_NAME: &str = "m";
 
 struct EncryptedGraph {
     database: neo4rs::Graph,
@@ -36,6 +38,7 @@ impl EncryptedGraph {
             CRUDtype::Read => self.read(query).await,
             CRUDtype::Update => self.update(query).await,
             CRUDtype::Delete => self.delete(query).await,
+            CRUDtype::FindShortestPath => self.find_shortest_path(query).await,
         }
     }
 
@@ -195,7 +198,74 @@ impl EncryptedGraph {
                 }
             }
             // case 2: MATCH (n:Label {name: $value})-[r]->(m) REMOVE / SET
-            (true, true, true) => {}
+            (true, true, true) => {
+                let read_query = {
+                    let mut read_query = query.clone();
+                    read_query.set_list.take();
+                    read_query.remove_list.take();
+                    read_query.return_list.replace(vec![
+                        Item::Var(NODE_VAR_NAME.to_string()),
+                        Item::Var(RELATION_VAR_NAME.to_string()),
+                        Item::Var(NEXT_NODE_VAR_NAME.to_string()),
+                    ]);
+                    read_query
+                };
+
+                let plain_rows = self.read(read_query).await?;
+
+                let mut res_rows = Rows::new_empty();
+                for plain_row in plain_rows.rows() {
+                    if plain_row.inners().len() != 3 {
+                        return Err(anyhow::anyhow!("Data was attacked"));
+                    }
+
+                    let mut inners = plain_row.inners().clone();
+                    let r_uid = inners[1]
+                        .get(MAGIC_UID_KEY)
+                        .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                        .clone();
+
+                    update_inners_by_remove(&mut inners, query.remove_list.as_ref());
+                    update_inners_by_set(&mut inners, query.set_list.as_ref());
+
+                    let single_query = {
+                        let mut single_query = query.clone();
+                        single_query
+                            .relation
+                            .as_mut()
+                            .unwrap()
+                            .add_property(MAGIC_UID_KEY.to_string(), r_uid);
+                        single_query
+                            .set_list
+                            .get_or_insert(vec![])
+                            .append(&mut vec![
+                                Item::VarWithKeyValue(
+                                    NODE_VAR_NAME.to_string(),
+                                    MAGIC_HASH_KEY.to_string(),
+                                    get_inner_hash(&mut inners[0]),
+                                ),
+                                Item::VarWithKeyValue(
+                                    RELATION_VAR_NAME.to_string(),
+                                    MAGIC_HASH_KEY.to_string(),
+                                    get_inner_hash(&mut inners[1]),
+                                ),
+                                Item::VarWithKeyValue(
+                                    NEXT_NODE_VAR_NAME.to_string(),
+                                    MAGIC_HASH_KEY.to_string(),
+                                    get_inner_hash(&mut inners[2]),
+                                ),
+                            ]);
+
+                        self.encrypt_query(&mut single_query);
+                        single_query
+                    };
+
+                    let result = self.execute_enc_query(single_query).await?;
+                    if !result.is_empty() {
+                        res_rows.push(result.rows()[0].clone());
+                    }
+                }
+            }
             _ => return Err(anyhow::anyhow!("Invalid query: {:?}", query)),
         }
         todo!("");
@@ -204,6 +274,121 @@ impl EncryptedGraph {
     async fn delete(&self, mut query: CypherQuery) -> Result<Rows> {
         self.encrypt_query(&mut query);
         self.execute_enc_query(query).await
+    }
+
+    async fn find_shortest_path(&self, mut query: CypherQuery) -> Result<Rows> {
+        let mut src = query.node.take().unwrap();
+        src.var_name.replace(NODE_VAR_NAME.to_string());
+        let mut dst = query.next_node.take().unwrap();
+        dst.var_name.replace(NEXT_NODE_VAR_NAME.to_string());
+
+        // (uid of cur-node, uid of prev-node)
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut uid2node: HashMap<String, (Inner, String)> = HashMap::new();
+
+        let (src_uid, dst_uid) = {
+            let read_query = CypherQueryBuilder::new()
+                .MATCH()
+                .node(src.clone())
+                .next_node(dst.clone())
+                .RETURN(vec![
+                    Item::Var(NODE_VAR_NAME.to_string()),
+                    Item::Var(NEXT_NODE_VAR_NAME.to_string()),
+                ])
+                .build();
+
+            let plain_rows = self.read(read_query).await?;
+
+            if plain_rows.rows().len() != 1 || plain_rows.rows()[0].inners().len() != 2 {
+                return Err(anyhow::anyhow!("Data was attacked"));
+            }
+
+            let src_uid = plain_rows.rows()[0].inners()[0]
+                .get(MAGIC_UID_KEY)
+                .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                .clone();
+            let dst_uid = plain_rows.rows()[0].inners()[1]
+                .get(MAGIC_UID_KEY)
+                .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                .clone();
+
+            queue.push_back(src_uid.clone());
+            uid2node.insert(
+                src_uid.clone(),
+                (plain_rows.rows()[0].inners()[0].clone(), String::new()),
+            );
+
+            (src_uid, dst_uid)
+        };
+
+        let mut res = Rows::new_empty();
+
+        while !queue.is_empty() {
+            let cur_uid = queue.pop_front().unwrap();
+
+            if cur_uid == dst_uid {
+                let mut inners = vec![];
+                let mut uid = dst_uid.clone();
+                while let Some((inner, prev)) = uid2node.remove(&uid) {
+                    inners.push(inner);
+
+                    if prev.is_empty() {
+                        break;
+                    }
+
+                    uid = prev;
+                }
+                inners.reverse();
+                res.push(Row::new(inners));
+                break;
+            }
+
+            let read_query = CypherQueryBuilder::new()
+                .MATCH()
+                .node(Node::new(
+                    None::<String>,
+                    Vec::<String>::new(),
+                    vec![(MAGIC_UID_KEY, cur_uid.clone())],
+                ))
+                .relation(Relation::new_with_var(RELATION_VAR_NAME))
+                .next_node(Node::new_with_var(NEXT_NODE_VAR_NAME))
+                .RETURN(vec![
+                    Item::Var(RELATION_VAR_NAME.to_string()),
+                    Item::Var(NEXT_NODE_VAR_NAME.to_string()),
+                ])
+                .build();
+
+            let plain_rows = self.read(read_query).await?;
+
+            for plain_row in plain_rows.rows() {
+                if plain_row.inners().len() != 2 {
+                    return Err(anyhow::anyhow!("Data was attacked"));
+                }
+
+                let r = &plain_row.inners()[0];
+                let next = &plain_row.inners()[1];
+
+                let r_uid = r
+                    .get(MAGIC_UID_KEY)
+                    .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                    .clone();
+                let next_uid = next
+                    .get(MAGIC_UID_KEY)
+                    .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                    .clone();
+
+                if r_uid != cur_uid.clone() + &next_uid {
+                    return Err(anyhow::anyhow!("Data was attacked"));
+                }
+
+                if !uid2node.contains_key(&next_uid) {
+                    queue.push_back(next_uid.clone());
+                    uid2node.insert(next_uid, (next.clone(), cur_uid.clone()));
+                }
+            }
+        }
+
+        Ok(res)
     }
 
     fn encrypt_query(&self, query: &mut CypherQuery) -> Result<()> {
@@ -380,12 +565,12 @@ fn update_inners_by_set(inners: &mut Vec<Inner>, set_list: Option<&Vec<Item>>) -
                             .get_mut(0)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
                             .update_or_add_property(k, v.to_string());
-                    } else if var == NEXT_NODE_VAR_NAME {
+                    } else if var == RELATION_VAR_NAME {
                         inners
                             .get_mut(1)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
                             .update_or_add_property(k, v.to_string());
-                    } else if var == RELATION_VAR_NAME {
+                    } else if var == NEXT_NODE_VAR_NAME {
                         inners
                             .get_mut(2)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
@@ -400,12 +585,12 @@ fn update_inners_by_set(inners: &mut Vec<Inner>, set_list: Option<&Vec<Item>>) -
                             .get_mut(0)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
                             .add_label(label.to_string());
-                    } else if var == NEXT_NODE_VAR_NAME {
+                    } else if var == RELATION_VAR_NAME {
                         inners
                             .get_mut(1)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
                             .add_label(label.to_string());
-                    } else if var == RELATION_VAR_NAME {
+                    } else if var == NEXT_NODE_VAR_NAME {
                         inners
                             .get_mut(2)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
@@ -431,12 +616,12 @@ fn update_inners_by_remove(inners: &mut Vec<Inner>, remove_list: Option<&Vec<Ite
                             .get_mut(0)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
                             .remove_property(k);
-                    } else if var == NEXT_NODE_VAR_NAME {
+                    } else if var == RELATION_VAR_NAME {
                         inners
                             .get_mut(1)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
                             .remove_property(k);
-                    } else if var == RELATION_VAR_NAME {
+                    } else if var == NEXT_NODE_VAR_NAME {
                         inners
                             .get_mut(2)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
@@ -451,13 +636,13 @@ fn update_inners_by_remove(inners: &mut Vec<Inner>, remove_list: Option<&Vec<Ite
                             .get_mut(0)
                             .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
                             .remove_label(label);
-                    } else if var == NEXT_NODE_VAR_NAME {
-                        inners
-                            .get_mut(1)
-                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
-                            .remove_label(label);
                     } else if var == RELATION_VAR_NAME {
                         return Err(anyhow::anyhow!("Can't remove the label of the relation"));
+                    } else if var == NEXT_NODE_VAR_NAME {
+                        inners
+                            .get_mut(2)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .remove_label(label);
                     } else {
                         return Err(anyhow::anyhow!("Invalid var_name: {:?}", var));
                     }

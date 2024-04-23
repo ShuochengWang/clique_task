@@ -11,6 +11,7 @@ pub struct CypherQuery {
     pub set_list: Option<Vec<Item>>,
     pub remove_list: Option<Vec<Item>>,
     pub delete_list: Option<(Vec<Item>, bool)>,
+    pub find_shortest_path: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,6 +25,7 @@ pub struct CypherQueryBuilder {
     set_list: Option<Vec<Item>>,
     remove_list: Option<Vec<Item>>,
     delete_list: Option<(Vec<Item>, bool)>,
+    find_shortest_path: bool,
 }
 
 #[derive(Debug)]
@@ -32,6 +34,7 @@ pub enum CRUDtype {
     Read,
     Update,
     Delete,
+    FindShortestPath,
 }
 
 impl CypherQuery {
@@ -54,15 +57,16 @@ impl CypherQuery {
             &self.set_list,
             &self.remove_list,
             &self.delete_list,
+            &self.find_shortest_path,
         ) {
-            (Some(node), None, None, false, true, _, None, None, None) => {
+            (Some(node), None, None, false, true, _, None, None, None, false) => {
                 return Ok(format!(
                     "CREATE {} {}",
                     node.to_query_string(),
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), Some(r), Some(next_node), false, true, _, None, None, None) => {
+            (Some(node), Some(r), Some(next_node), false, true, _, None, None, None, false) => {
                 return Ok(format!(
                     "CREATE {}-{}->{} {}",
                     node.to_query_string(),
@@ -71,7 +75,7 @@ impl CypherQuery {
                     self.to_return_query_string()?,
                 ));
             }
-            (Some(node), Some(r), Some(next_node), true, true, _, None, None, None) => {
+            (Some(node), Some(r), Some(next_node), true, true, _, None, None, None, false) => {
                 return Ok(format!(
                     "MATCH {}, {} CREATE ({})-{}->({}) {}",
                     node.to_query_string(),
@@ -85,14 +89,14 @@ impl CypherQuery {
                     self.to_return_query_string()?,
                 ));
             }
-            (Some(node), None, None, true, false, Some(_), None, None, None) => {
+            (Some(node), None, None, true, false, Some(_), None, None, None, false) => {
                 return Ok(format!(
                     "MATCH {} {}",
                     node.to_query_string(),
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), Some(r), Some(next_node), true, false, Some(_), None, None, None) => {
+            (Some(node), Some(r), Some(next_node), true, false, Some(_), None, None, None, false) => {
                 return Ok(format!(
                     "MATCH {}-{}->{} {}",
                     node.to_query_string(),
@@ -101,43 +105,27 @@ impl CypherQuery {
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), None, None, true, false, _, Some(_), None, None) => {
+            (Some(node), None, None, true, false, _, _, _, None, false) => {
                 return Ok(format!(
-                    "MATCH {} {} {}",
+                    "MATCH {} {} {} {}",
                     node.to_query_string(),
+                    self.to_remove_query_string()?,
                     self.to_set_query_string()?,
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), Some(r), Some(next_node), true, false, _, Some(_), None, None) => {
+            (Some(node), Some(r), Some(next_node), true, false, _, _, _, None, false) => {
                 return Ok(format!(
-                    "MATCH {}-{}->{} {} {}",
+                    "MATCH {}-{}->{} {} {} {}",
                     node.to_query_string(),
                     r.to_query_string(),
                     next_node.to_query_string(),
+                    self.to_remove_query_string()?,
                     self.to_set_query_string()?,
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), None, None, true, false, _, None, Some(_), None) => {
-                return Ok(format!(
-                    "MATCH {} {} {}",
-                    node.to_query_string(),
-                    self.to_remove_query_string()?,
-                    self.to_return_query_string()?
-                ));
-            }
-            (Some(node), Some(r), Some(next_node), true, false, _, None, Some(_), None) => {
-                return Ok(format!(
-                    "MATCH {}-{}->{} {} {}",
-                    node.to_query_string(),
-                    r.to_query_string(),
-                    next_node.to_query_string(),
-                    self.to_remove_query_string()?,
-                    self.to_return_query_string()?
-                ));
-            }
-            (Some(node), None, None, true, false, _, None, None, Some(_)) => {
+            (Some(node), None, None, true, false, _, None, None, Some(_), false) => {
                 return Ok(format!(
                     "MATCH {} {} {}",
                     node.to_query_string(),
@@ -145,7 +133,7 @@ impl CypherQuery {
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), Some(r), Some(next_node), true, false, _, None, None, Some(_)) => {
+            (Some(node), Some(r), Some(next_node), true, false, _, None, None, Some(_), false) => {
                 return Ok(format!(
                     "MATCH {}-{}->{} {} {}",
                     node.to_query_string(),
@@ -175,26 +163,33 @@ impl CypherQuery {
             &self.set_list,
             &self.remove_list,
             &self.delete_list,
+            &self.find_shortest_path,
         ) {
-            (Some(_), None, None, false, true, _, None, None, None)
-            | (Some(_), Some(_), Some(_), false, true, _, None, None, None)
-            | (Some(_), Some(_), Some(_), true, true, _, None, None, None) => Ok(CRUDtype::Create),
+            (Some(_), None, None, false, true, _, None, None, None, false)
+            | (Some(_), Some(_), Some(_), false, true, _, None, None, None, false)
+            | (Some(_), Some(_), Some(_), true, true, _, None, None, None, false) => {
+                Ok(CRUDtype::Create)
+            }
 
-            (Some(_), None, None, true, false, Some(_), None, None, None)
-            | (Some(_), Some(_), Some(_), true, false, Some(_), None, None, None) => {
+            (Some(_), None, None, true, false, Some(_), None, None, None, false)
+            | (Some(_), Some(_), Some(_), true, false, Some(_), None, None, None, false) => {
                 Ok(CRUDtype::Read)
             }
 
-            (Some(_), None, None, true, false, _, Some(_), None, None)
-            | (Some(_), Some(_), Some(_), true, false, _, Some(_), None, None)
-            | (Some(_), None, None, true, false, _, None, Some(_), None)
-            | (Some(_), Some(_), Some(_), true, false, _, None, Some(_), None) => {
+            (Some(_), None, None, true, false, _, Some(_), None, None, false)
+            | (Some(_), Some(_), Some(_), true, false, _, Some(_), None, None, false)
+            | (Some(_), None, None, true, false, _, None, Some(_), None, false)
+            | (Some(_), Some(_), Some(_), true, false, _, None, Some(_), None, false) => {
                 Ok(CRUDtype::Update)
             }
 
-            (Some(_), None, None, true, false, _, None, None, Some(_))
-            | (Some(_), Some(_), Some(_), true, false, _, None, None, Some(_)) => {
+            (Some(_), None, None, true, false, _, None, None, Some(_), false)
+            | (Some(_), Some(_), Some(_), true, false, _, None, None, Some(_), false) => {
                 Ok(CRUDtype::Delete)
+            }
+
+            (Some(_), None, Some(_), true, false, None, None, None, None, true) => {
+                Ok(CRUDtype::FindShortestPath)
             }
 
             _ => Err(anyhow::anyhow!(
@@ -311,6 +306,7 @@ impl CypherQueryBuilder {
             set_list: None,
             remove_list: None,
             delete_list: None,
+            find_shortest_path: false,
         }
     }
 
@@ -365,6 +361,11 @@ impl CypherQueryBuilder {
         self
     }
 
+    pub fn find_shortest_path(mut self) -> Self {
+        self.find_shortest_path = true;
+        self
+    }
+
     pub fn build(self) -> CypherQuery {
         CypherQuery {
             node: self.node,
@@ -376,6 +377,7 @@ impl CypherQueryBuilder {
             set_list: self.set_list,
             remove_list: self.remove_list,
             delete_list: self.delete_list,
+            find_shortest_path: self.find_shortest_path,
         }
     }
 }

@@ -23,6 +23,16 @@ impl Relation {
         }
     }
 
+    pub fn new_with_var(
+        var_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            var_name: Some(var_name.into()),
+            labels: vec![],
+            properties: vec![],
+        }
+    }
+
     pub fn var_name(&self) -> Option<&String> {
         self.var_name.as_ref()
     }

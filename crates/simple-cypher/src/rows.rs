@@ -85,6 +85,10 @@ impl Inner {
         }
         false
     }
+
+    pub fn to_node(&self) -> Node {
+        Node::new(None::<String>, self.labels.clone(), self.properties.clone())
+    }
 }
 
 impl Row {

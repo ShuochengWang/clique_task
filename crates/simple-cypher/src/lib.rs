@@ -199,7 +199,7 @@ mod tests {
         let query_str = query.to_query_string()?;
         assert_eq!(
             query_str,
-            "MATCH (n:label1 {k1: 'v1'}) SET n:label3, n.k1 = 'new_v1', n.k3 = 'v3' RETURN n"
+            "MATCH (n:label1 {k1: 'v1'})  SET n:label3, n.k1 = 'new_v1', n.k3 = 'v3' RETURN n"
         );
 
         let serialized = serde_json::to_string(&query)?;
@@ -239,7 +239,7 @@ mod tests {
         let query_str = query.to_query_string()?;
         assert_eq!(
             query_str,
-            "MATCH (a:label1 {k1: 'v1'})-[r]->() SET r.rk1 = 'new_rv1', r.rk3 = 'rv3' "
+            "MATCH (a:label1 {k1: 'v1'})-[r]->()  SET r.rk1 = 'new_rv1', r.rk3 = 'rv3' "
         );
 
         let serialized = query.serialize()?;
@@ -265,7 +265,7 @@ mod tests {
         let query_str = query.to_query_string()?;
         assert_eq!(
             query_str,
-            "MATCH (n:label1 {k1: 'v1'}) REMOVE n:label3, n.k3 "
+            "MATCH (n:label1 {k1: 'v1'}) REMOVE n:label3, n.k3  "
         );
 
         let serialized = query.serialize()?;
@@ -306,7 +306,84 @@ mod tests {
         let query_str = query.to_query_string()?;
         assert_eq!(
             query_str,
-            "MATCH (:label1:label2 {k1: 'v1'})-[r]->(:label1:label2 {k1: 'nv1'}) REMOVE r.rk3 RETURN r"
+            "MATCH (:label1:label2 {k1: 'v1'})-[r]->(:label1:label2 {k1: 'nv1'}) REMOVE r.rk3  RETURN r"
+        );
+
+        let serialized = query.serialize()?;
+        let deserilized = CypherQuery::deserialize(&serialized)?;
+        let query_str2 = deserilized.to_query_string()?;
+        assert_eq!(query_str, query_str2);
+
+        Ok(())
+    }
+
+    // MATCH (n:label1 {k1: 'v1'}) REMOVE n:label3, n.k3 SET n.k4 = 'v4'
+    #[test]
+    fn test_remove_set() -> Result<()> {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(Some("n"), vec!["label1"], vec![("k1", "v1")]))
+            .REMOVE(vec![
+                Item::VarWithLabel(String::from("n"), String::from("label3")),
+                Item::VarWithKey(String::from("n"), String::from("k3")),
+            ])
+            .SET(vec![Item::VarWithKeyValue(
+                String::from("n"),
+                String::from("k4"),
+                String::from("v4"),
+            )])
+            .build();
+
+        let query_str = query.to_query_string()?;
+        assert_eq!(
+            query_str,
+            "MATCH (n:label1 {k1: 'v1'}) REMOVE n:label3, n.k3 SET n.k4 = 'v4' "
+        );
+
+        let serialized = query.serialize()?;
+        let deserilized = CypherQuery::deserialize(&serialized)?;
+        let query_str2 = deserilized.to_query_string()?;
+        assert_eq!(query_str, query_str2);
+
+        Ok(())
+    }
+
+    // MATCH (:label1:label2 {k1: 'v1'})-[r]->(:label1:label2 {k1: 'nv1'}) REMOVE r.rk3 SET r.rk4 = 'rv4' RETURN r
+    #[test]
+    fn test_remove_set2() -> Result<()> {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                None::<String>,
+                vec!["label1", "label2"],
+                vec![("k1", "v1")],
+            ))
+            .relation(Relation::new(
+                Some("r"),
+                Vec::<String>::new(),
+                Vec::<(String, String)>::new(),
+            ))
+            .next_node(Node::new(
+                None::<String>,
+                vec!["label1", "label2"],
+                vec![("k1", "nv1")],
+            ))
+            .REMOVE(vec![Item::VarWithKey(
+                String::from("r"),
+                String::from("rk3"),
+            )])
+            .SET(vec![Item::VarWithKeyValue(
+                String::from("r"),
+                String::from("rk4"),
+                String::from("rv4"),
+            )])
+            .RETURN(vec![Item::Var(String::from("r"))])
+            .build();
+
+        let query_str = query.to_query_string()?;
+        assert_eq!(
+            query_str,
+            "MATCH (:label1:label2 {k1: 'v1'})-[r]->(:label1:label2 {k1: 'nv1'}) REMOVE r.rk3 SET r.rk4 = 'rv4' RETURN r"
         );
 
         let serialized = query.serialize()?;
