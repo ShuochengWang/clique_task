@@ -91,7 +91,6 @@ impl EncryptedGraph {
                 };
 
                 let plain_rows = self.read(read_query).await?;
-                log::trace!("{}, {}", file!(), line!());
 
                 let mut res_rows = Rows::new_empty();
                 for plain_row in plain_rows.rows() {
@@ -146,7 +145,6 @@ impl EncryptedGraph {
         log::trace!("enter read with query: {:?}", query);
 
         self.encrypt_query(&mut query);
-        log::trace!("{}, {}", file!(), line!());
         self.execute_enc_query(query).await
     }
 

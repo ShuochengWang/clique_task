@@ -174,6 +174,13 @@ impl CypherQuery {
                     self.to_return_query_string()?
                 ));
             }
+            (Some(node), None, Some(next_node), _, false, None, None, None, None, true) => {
+                return Ok(format!(
+                    "FIND_SHORTEST_PATH {}, {}",
+                    node.to_query_string(),
+                    next_node.to_query_string()
+                ));
+            }
             _ => {
                 return Err(anyhow::anyhow!(
                     "Invalid or unsupported cypher query: {:?}",
@@ -219,7 +226,7 @@ impl CypherQuery {
                 Ok(CRUDtype::Delete)
             }
 
-            (Some(_), None, Some(_), true, false, None, None, None, None, true) => {
+            (Some(_), None, Some(_), _, false, None, None, None, None, true) => {
                 Ok(CRUDtype::FindShortestPath)
             }
 

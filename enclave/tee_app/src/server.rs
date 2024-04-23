@@ -16,12 +16,13 @@ pub async fn start_server() -> Result<()> {
 
     let graph = EncryptedGraph::new(uri, user, pass).await?;
 
-    test(&graph).await.unwrap();
+    test_CRUD(&graph).await.unwrap();
+    test_find_shortest_path(&graph).await.unwrap();
 
     Ok(())
 }
 
-async fn test(graph: &EncryptedGraph) -> Result<()> {
+async fn test_CRUD(graph: &EncryptedGraph) -> Result<()> {
     {
         let query = CypherQueryBuilder::new()
             .CREATE()
@@ -306,6 +307,82 @@ async fn test(graph: &EncryptedGraph) -> Result<()> {
             .unwrap();
         println!("{}\n{:?}", query.to_query_string()?, result);
     }
+
+    Ok(())
+}
+
+async fn test_find_shortest_path(graph: &EncryptedGraph) -> Result<()> {
+    for node_name in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+        let query = CypherQueryBuilder::new()
+            .CREATE()
+            .node(Node::new(
+                None::<String>,
+                vec!["Person"],
+                vec![("name", node_name)],
+            ))
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+
+    //            c --> d
+    //            ⬆     ⬇
+    //      a --> b --> e --> f
+    //                  ⬇     ⬇
+    //                  h <-- g
+    for (from, to) in [
+        ("a", "b"),
+        ("b", "c"),
+        ("b", "e"),
+        ("c", "d"),
+        ("d", "e"),
+        ("e", "f"),
+        ("f", "g"),
+        ("e", "h"),
+        ("g", "h"),
+    ] {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(Some("n"), vec!["Person"], vec![("name", from)]))
+            .relation(Relation::new(
+                Some("r"),
+                vec!["knows"],
+                Vec::<(String, String)>::new(),
+            ))
+            .next_node(Node::new(Some("m"), vec!["Person"], vec![("name", to)]))
+            .CREATE()
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+
+    let query = CypherQueryBuilder::new()
+        .node(Node::new(
+            Some("start"),
+            vec!["Person"],
+            vec![("name", "a")],
+        ))
+        .next_node(Node::new(Some("dest"), vec!["Person"], vec![("name", "g")]))
+        .find_shortest_path()
+        .build();
+    let result = graph
+        .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+        .await
+        .unwrap();
+
+    let path: Vec<&String> = result.rows()[0]
+        .inners()
+        .iter()
+        .map(|x| x.get("name").unwrap())
+        .collect();
+    assert_eq!(path, vec!["a", "b", "e", "f", "g"]);
+    println!("{}\n{:?}", query.to_query_string()?, result);
 
     Ok(())
 }
