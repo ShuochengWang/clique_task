@@ -12,7 +12,7 @@ const NODE_VAR_NAME: &str = "n";
 const RELATION_VAR_NAME: &str = "r";
 const NEXT_NODE_VAR_NAME: &str = "m";
 
-struct EncryptedGraph {
+pub struct EncryptedGraph {
     database: neo4rs::Graph,
     crypto: Crypto,
 }
@@ -28,8 +28,8 @@ impl EncryptedGraph {
         Ok(Self { database, crypto })
     }
 
-    pub async fn execute_query(&self, serialized_query: String) -> Result<Rows> {
-        let mut query = CypherQuery::deserialize(&serialized_query)?;
+    pub async fn execute_query(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("execute_query: {:?}", query);
 
         confuse_var_name(&mut query);
 
@@ -43,6 +43,8 @@ impl EncryptedGraph {
     }
 
     async fn create(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("create");
+
         // TODO: Solve the problem where the uid name may conflict with the property name in the query
         match (
             query.node.is_some(),
@@ -424,6 +426,8 @@ impl EncryptedGraph {
 }
 
 fn confuse_var_name(query: &mut CypherQuery) {
+    log::trace!("enter confuse_var_name: {:?}", query);
+
     let map_table = {
         let mut map_table = vec![];
         let var1 = query
@@ -502,6 +506,8 @@ fn confuse_var_name(query: &mut CypherQuery) {
     if let Some((list, _)) = query.delete_list.as_mut() {
         update_var_name(list);
     }
+
+    log::trace!("confuse_var_name exit: {:?}", query);
 }
 
 fn add_hash_to_node(inner: &mut Node) {

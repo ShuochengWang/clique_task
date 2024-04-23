@@ -43,6 +43,7 @@ impl CypherQuery {
     }
 
     pub fn deserialize(serialized: &str) -> Result<CypherQuery> {
+        log::trace!("File: {}, Line: {}", file!(), line!());
         Ok(serde_json::from_str(serialized)?)
     }
 
