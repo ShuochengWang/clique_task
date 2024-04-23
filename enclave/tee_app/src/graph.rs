@@ -33,17 +33,26 @@ impl EncryptedGraph {
 
         confuse_var_name(&mut query);
 
-        match query.get_type()? {
-            CRUDtype::Create => self.create(query).await,
-            CRUDtype::Read => self.read(query).await,
-            CRUDtype::Update => self.update(query).await,
-            CRUDtype::Delete => self.delete(query).await,
-            CRUDtype::FindShortestPath => self.find_shortest_path(query).await,
-        }
+        let mut res = match query.get_type()? {
+            CRUDtype::Create => self.create(query).await?,
+            CRUDtype::Read => self.read(query).await?,
+            CRUDtype::Update => self.update(query).await?,
+            CRUDtype::Delete => self.delete(query).await?,
+            CRUDtype::FindShortestPath => self.find_shortest_path(query).await?,
+        };
+
+        res.rows_mut().iter_mut().for_each(|row| {
+            row.inners_mut().iter_mut().for_each(|inner| {
+                inner.remove_property(MAGIC_HASH_KEY);
+                inner.remove_property(MAGIC_UID_KEY);
+            })
+        });
+
+        Ok(res)
     }
 
     async fn create(&self, mut query: CypherQuery) -> Result<Rows> {
-        log::trace!("create");
+        log::trace!("enter create with query: {:?}", query);
 
         // TODO: Solve the problem where the uid name may conflict with the property name in the query
         match (
@@ -82,6 +91,7 @@ impl EncryptedGraph {
                 };
 
                 let plain_rows = self.read(read_query).await?;
+                log::trace!("{}, {}", file!(), line!());
 
                 let mut res_rows = Rows::new_empty();
                 for plain_row in plain_rows.rows() {
@@ -133,11 +143,16 @@ impl EncryptedGraph {
     }
 
     async fn read(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("enter read with query: {:?}", query);
+
         self.encrypt_query(&mut query);
+        log::trace!("{}, {}", file!(), line!());
         self.execute_enc_query(query).await
     }
 
     async fn update(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("enter update with query: {:?}", query);
+
         match (
             query.node.is_some(),
             query.relation.is_some(),
@@ -198,6 +213,7 @@ impl EncryptedGraph {
                         res_rows.push(result.rows()[0].clone());
                     }
                 }
+                return Ok(res_rows);
             }
             // case 2: MATCH (n:Label {name: $value})-[r]->(m) REMOVE / SET
             (true, true, true) => {
@@ -267,18 +283,22 @@ impl EncryptedGraph {
                         res_rows.push(result.rows()[0].clone());
                     }
                 }
+                return Ok(res_rows);
             }
             _ => return Err(anyhow::anyhow!("Invalid query: {:?}", query)),
         }
-        todo!("");
     }
 
     async fn delete(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("enter create with delete: {:?}", query);
+
         self.encrypt_query(&mut query);
         self.execute_enc_query(query).await
     }
 
     async fn find_shortest_path(&self, mut query: CypherQuery) -> Result<Rows> {
+        log::trace!("enter find_shortest_path with query: {:?}", query);
+
         let mut src = query.node.take().unwrap();
         src.var_name.replace(NODE_VAR_NAME.to_string());
         let mut dst = query.next_node.take().unwrap();
@@ -394,14 +414,20 @@ impl EncryptedGraph {
     }
 
     fn encrypt_query(&self, query: &mut CypherQuery) -> Result<()> {
+        log::trace!("enter encrypt_query");
+
         self.crypto.enc_query(query)
     }
 
     async fn execute_enc_query(&self, enc_query: CypherQuery) -> Result<Rows> {
+        log::trace!("enter execute_enc_query: {:?}", enc_query);
+
         let mut result = self
             .database
             .execute(neo4rs::Query::from(enc_query.to_query_string()?))
             .await?;
+
+        log::trace!("{}", line!());
 
         let return_list = get_return_vars(&enc_query);
         let mut res_rows = Rows::new_empty();
@@ -421,6 +447,9 @@ impl EncryptedGraph {
                 res_rows.push(self.crypto.decrypt_and_verify(res_enc_row)?);
             }
         }
+
+        log::trace!("exit execute_enc_query");
+
         Ok(res_rows)
     }
 }
@@ -507,7 +536,7 @@ fn confuse_var_name(query: &mut CypherQuery) {
         update_var_name(list);
     }
 
-    log::trace!("confuse_var_name exit: {:?}", query);
+    log::trace!("exit confuse_var_name: {:?}", query);
 }
 
 fn add_hash_to_node(inner: &mut Node) {

@@ -138,6 +138,10 @@ impl Rows {
         &self.rows
     }
 
+    pub fn rows_mut(&mut self) -> &mut Vec<Row> {
+        &mut self.rows
+    }
+
     pub fn push(&mut self, row: Row) {
         self.rows.push(row);
     }
