@@ -2,10 +2,14 @@ use crate::graph::EncryptedGraph;
 
 use anyhow::Result;
 use dotenv::dotenv;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::client::danger::HandshakeSignatureValid;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, UnixTime};
+use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
+use rustls::server::WebPkiClientVerifier;
+use rustls::{DigitallySignedStruct, DistinguishedName, RootCertStore, SignatureScheme};
 use rustls_pemfile::{certs, read_all};
 use simple_cypher::*;
-use tokio::io::{copy, sink, split, AsyncWriteExt};
+use tokio::io::{copy, sink, split, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_rustls::{rustls, TlsAcceptor};
 
@@ -23,22 +27,67 @@ pub async fn start_server() -> Result<()> {
     let user = env::var("DATABASE_USERNAME").expect("DATABASE_USERNAME must be set");
     let pass = env::var("DATABASE_PASSWORD").expect("DATABASE_PASSWORD must be set");
 
-    let graph = EncryptedGraph::new(uri, user, pass).await?;
+    let graph = Arc::new(EncryptedGraph::new(uri, user, pass).await?);
 
-    test_crud(&graph).await.unwrap();
-    test_find_shortest_path(&graph).await.unwrap();
+    // test_crud(&graph).await.unwrap();
+    // test_find_shortest_path(&graph).await.unwrap();
 
     let addr = "127.0.0.1:8080"
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
-    let certs = load_certs("/server.crt")?;
-    let key = load_keys("/server.key")?;
 
-    let server_config = rustls::ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    // let certs = load_certs("/server.crt")?;
+    // let key = load_keys("/server.key")?;
+    // let client_certs = load_certs("/rootCA.pem")?;
+
+    // let mut roots = RootCertStore::empty();
+    // for client_cert in client_certs {
+    //     roots.add(client_cert);
+    // }
+
+    // let inner = WebPkiClientVerifier::builder(roots.into()).build()?;
+    // let verifier = MyClientCertVerifier::new(inner).boxed();
+
+    // let server_config = rustls::ServerConfig::builder()
+    //     .with_client_cert_verifier(verifier)
+    //     .with_single_cert(certs, key)?;
+    // let acceptor = TlsAcceptor::from(Arc::new(server_config));
+
+    log::info!("bind addr: {}", addr);
+
+    let listener = TcpListener::bind(&addr).await?;
+
+    log::info!("start listening...");
+
+    loop {
+        let (mut stream, peer_addr) = listener.accept().await?;
+        log::info!("accept");
+
+        // let acceptor = acceptor.clone();
+
+        let fut = async move {
+            // let mut stream = acceptor.accept(stream).await?;
+
+            let mut buf = [0; 4096];
+            let n = stream.read(&mut buf).await?;
+            println!("The bytes: {:?}", &buf[..n]);
+
+            // let mut serialized_query = String::new();
+            // stream.read_to_string(&mut serialized_query)?;
+
+            // let query = CypherQuery::deserialize(serialized_query)?;
+            // let result = graph.clone().execute_query(query).await?;
+
+            Ok(()) as Result<()>
+        };
+
+        tokio::spawn(async move {
+            if let Err(err) = fut.await {
+                eprintln!("{:?}", err);
+            }
+        });
+    }
 
     println!("!!!!!!!!!");
 
@@ -59,6 +108,62 @@ fn load_keys(path: &str) -> Result<PrivateKeyDer<'static>> {
         }
     }
     Err(anyhow::anyhow!("there is no key"))
+}
+
+#[derive(Debug)]
+struct MyClientCertVerifier {
+    inner: Arc<dyn ClientCertVerifier>,
+}
+
+impl MyClientCertVerifier {
+    pub fn new(inner: Arc<dyn ClientCertVerifier>) -> Self {
+        Self { inner }
+    }
+
+    /// Wrap this verifier in an [`Arc`] and coerce it to `dyn ClientCertVerifier`
+    #[inline(always)]
+    pub fn boxed(self) -> Arc<dyn ClientCertVerifier> {
+        // This function is needed to keep it functioning like the original verifier.
+        Arc::new(self)
+    }
+}
+
+impl ClientCertVerifier for MyClientCertVerifier {
+    fn root_hint_subjects(&self) -> &[DistinguishedName] {
+        self.inner.root_hint_subjects()
+    }
+
+    fn verify_client_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        now: UnixTime,
+    ) -> Result<ClientCertVerified, rustls::Error> {
+        self.inner
+            .verify_client_cert(end_entity, intermediates, now)
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.inner.supported_verify_schemes()
+    }
 }
 
 async fn test_crud(graph: &EncryptedGraph) -> Result<()> {

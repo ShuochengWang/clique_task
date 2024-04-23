@@ -28,7 +28,7 @@ mod logger {
 
     impl log::Log for SimpleLogger {
         fn enabled(&self, metadata: &Metadata) -> bool {
-            metadata.level() <= Level::Warn
+            metadata.level() <= Level::Info
         }
 
         fn log(&self, record: &Record) {

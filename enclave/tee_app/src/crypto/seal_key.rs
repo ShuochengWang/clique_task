@@ -1,10 +1,9 @@
 use anyhow::Result;
 use libc::{c_int, O_RDONLY};
 use sgx_types::{
-    sgx_attributes_t, sgx_key_128bit_t, sgx_key_id_t, sgx_key_request_t,
-    sgx_report_data_t, sgx_report_t, sgx_target_info_t, SGX_KEYID_SIZE, SGX_KEYPOLICY_MRENCLAVE,
-    SGX_KEYSELECT_SEAL, SGX_KEY_REQUEST_RESERVED2_BYTES, TSEAL_DEFAULT_FLAGSMASK,
-    TSEAL_DEFAULT_MISCMASK,
+    sgx_attributes_t, sgx_key_128bit_t, sgx_key_id_t, sgx_key_request_t, sgx_report_data_t,
+    sgx_report_t, sgx_target_info_t, SGX_KEYID_SIZE, SGX_KEYPOLICY_MRENCLAVE, SGX_KEYSELECT_SEAL,
+    SGX_KEY_REQUEST_RESERVED2_BYTES, TSEAL_DEFAULT_FLAGSMASK, TSEAL_DEFAULT_MISCMASK,
 };
 
 use std::ffi::CString;

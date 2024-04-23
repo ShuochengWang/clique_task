@@ -22,6 +22,18 @@ services:
   occlum:
     image: occlum/occlum:latest-ubuntu20.04
     container_name: occlum
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./
+        target: /root/code
+    stdin_open: true
+    tty: true
+  
+  client:
+    image: occlum/occlum:latest-ubuntu20.04
+    container_name: client
+    network_mode: host
     volumes:
       - type: bind
         source: ./

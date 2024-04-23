@@ -8,3 +8,5 @@ authors = ["Shuocheng Wang <wangshch5@outlook.com>"]
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.26.0"
 simple-cypher = { path = "../crates/simple-cypher" }
+anyhow = "1.0"
+rustls-pemfile = "2"
