@@ -8,7 +8,7 @@ pub const MAGIC_UID_KEY: &str = "uid";
 
 const NODE_VAR_NAME: &str = "n";
 const NEXT_NODE_VAR_NAME: &str = "m";
-const RELATIONSHIP_VAR_NAME: &str = "r";
+const RELATION_VAR_NAME: &str = "r";
 
 struct EncryptedGraph {
     database: neo4rs::Graph,
@@ -113,51 +113,128 @@ impl EncryptedGraph {
                         single_query
                     };
 
-                    let mut result = self
-                        .database
-                        .execute(neo4rs::Query::from(single_query.to_query_string()?))
-                        .await?;
-
-                    let return_list = get_return_vars(&single_query);
-                    let mut res_enc_row = Row::new_empty();
-                    while let Ok(Some(row)) = result.next().await {
-                        for var in &return_list {
-                            if let Ok(n) = row.get::<neo4rs::Node>(var) {
-                                res_enc_row.push(build_inner_from_neo4rs_node(n));
-                            }
-                            if let Ok(r) = row.get::<neo4rs::Relation>(var) {
-                                res_enc_row.push(build_inner_from_neo4rs_relation(r));
-                            }
-                        }
-                    }
-
-                    if !res_enc_row.is_empty() {
-                        res_rows.push(self.crypto.decrypt_and_verify(&res_enc_row)?);
+                    let result = self.execute_enc_query(single_query).await?;
+                    if !result.is_empty() {
+                        res_rows.push(result.rows()[0].clone());
                     }
                 }
+                return Ok(res_rows);
             }
             _ => return Err(anyhow::anyhow!("Invalid query: {:?}", query)),
         }
 
         self.encrypt_query(&mut query);
-
-        todo!("");
+        self.execute_enc_query(query).await
     }
 
     async fn read(&self, mut query: CypherQuery) -> Result<Rows> {
-        todo!("");
+        self.encrypt_query(&mut query);
+        self.execute_enc_query(query).await
     }
 
     async fn update(&self, mut query: CypherQuery) -> Result<Rows> {
+        match (
+            query.node.is_some(),
+            query.relation.is_some(),
+            query.next_node.is_some(),
+        ) {
+            // case 1: MATCH (n:Label {name: $value}) REMOVE / SET
+            (true, false, false) => {
+                let read_query = {
+                    let mut read_query = query.clone();
+                    read_query.set_list.take();
+                    read_query.remove_list.take();
+                    read_query
+                        .return_list
+                        .replace(vec![Item::Var(NODE_VAR_NAME.to_string())]);
+                    read_query
+                };
+
+                let plain_rows = self.read(read_query).await?;
+
+                let mut res_rows = Rows::new_empty();
+                for plain_row in plain_rows.rows() {
+                    if plain_row.inners().len() != 1 {
+                        return Err(anyhow::anyhow!("Data was attacked"));
+                    }
+
+                    let mut inner = plain_row.inners()[0].clone();
+                    let uid = inner
+                        .get(MAGIC_UID_KEY)
+                        .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
+                        .clone();
+
+                    let mut inners = vec![inner];
+                    update_inners_by_remove(&mut inners, query.remove_list.as_ref());
+                    update_inners_by_set(&mut inners, query.set_list.as_ref());
+
+                    let single_query = {
+                        let mut single_query = query.clone();
+                        single_query
+                            .node
+                            .as_mut()
+                            .unwrap()
+                            .add_property(MAGIC_UID_KEY.to_string(), uid);
+                        single_query
+                            .set_list
+                            .get_or_insert(vec![])
+                            .push(Item::VarWithKeyValue(
+                                NODE_VAR_NAME.to_string(),
+                                MAGIC_HASH_KEY.to_string(),
+                                get_inner_hash(&mut inners[0]),
+                            ));
+
+                        self.encrypt_query(&mut single_query);
+                        single_query
+                    };
+
+                    let result = self.execute_enc_query(single_query).await?;
+                    if !result.is_empty() {
+                        res_rows.push(result.rows()[0].clone());
+                    }
+                }
+            }
+            // case 2: MATCH (n:Label {name: $value})-[r]->(m) REMOVE / SET
+            (true, true, true) => {}
+            _ => return Err(anyhow::anyhow!("Invalid query: {:?}", query)),
+        }
         todo!("");
     }
 
     async fn delete(&self, mut query: CypherQuery) -> Result<Rows> {
-        todo!("");
+        self.encrypt_query(&mut query);
+        self.execute_enc_query(query).await
     }
 
     fn encrypt_query(&self, query: &mut CypherQuery) -> Result<()> {
         self.crypto.enc_query(query)
+    }
+
+    async fn execute_enc_query(&self, enc_query: CypherQuery) -> Result<Rows> {
+        let mut result = self
+            .database
+            .execute(neo4rs::Query::from(enc_query.to_query_string()?))
+            .await?;
+
+        let return_list = get_return_vars(&enc_query);
+        let mut res_rows = Rows::new_empty();
+        while let Ok(Some(row)) = result.next().await {
+            // todo: verify result according to the query
+            let mut res_enc_row = Row::new_empty();
+            for var in &return_list {
+                if let Ok(n) = row.get::<neo4rs::Node>(var) {
+                    res_enc_row.push(build_inner_from_neo4rs_node(n));
+                }
+                if let Ok(r) = row.get::<neo4rs::Relation>(var) {
+                    res_enc_row.push(build_inner_from_neo4rs_relation(r));
+                }
+            }
+
+            if !res_enc_row.is_empty() {
+                res_rows.push(self.crypto.decrypt_and_verify(&res_enc_row)?);
+            }
+        }
+        Ok(res_rows)
     }
 }
 
@@ -171,7 +248,7 @@ fn confuse_var_name(query: &mut CypherQuery) {
         let var2 = query
             .relation
             .as_mut()
-            .and_then(|x| x.var_name.replace(RELATIONSHIP_VAR_NAME.to_string()));
+            .and_then(|x| x.var_name.replace(RELATION_VAR_NAME.to_string()));
         let var3 = query
             .next_node
             .as_mut()
@@ -180,7 +257,7 @@ fn confuse_var_name(query: &mut CypherQuery) {
             map_table.push((var, NODE_VAR_NAME.to_string()));
         }
         if let Some(var) = var2 {
-            map_table.push((var, RELATIONSHIP_VAR_NAME.to_string()));
+            map_table.push((var, RELATION_VAR_NAME.to_string()));
         }
         if let Some(var) = var3 {
             map_table.push((var, NEXT_NODE_VAR_NAME.to_string()));
@@ -274,6 +351,122 @@ fn add_hash_to_relationship(inner: &mut Relation) {
     inner
         .properties
         .push((MAGIC_HASH_KEY.to_string(), hasher.finalize().to_string()));
+}
+
+fn get_inner_hash(inner: &mut Inner) -> String {
+    inner.labels.sort();
+    inner.properties.sort();
+
+    let mut hasher = blake3::Hasher::new();
+    inner.labels.iter().for_each(|x| {
+        hasher.update(x.as_bytes());
+    });
+    inner.properties.iter().for_each(|(k, v)| {
+        if k != MAGIC_HASH_KEY {
+            hasher.update(k.as_bytes());
+            hasher.update(v.as_bytes());
+        }
+    });
+    hasher.finalize().to_string()
+}
+
+fn update_inners_by_set(inners: &mut Vec<Inner>, set_list: Option<&Vec<Item>>) -> Result<()> {
+    if let Some(updates) = set_list {
+        for update in updates {
+            match update {
+                Item::VarWithKeyValue(var, k, v) => {
+                    if var == NODE_VAR_NAME {
+                        inners
+                            .get_mut(0)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .update_or_add_property(k, v.to_string());
+                    } else if var == NEXT_NODE_VAR_NAME {
+                        inners
+                            .get_mut(1)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .update_or_add_property(k, v.to_string());
+                    } else if var == RELATION_VAR_NAME {
+                        inners
+                            .get_mut(2)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .update_or_add_property(k, v.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid var_name: {:?}", var));
+                    }
+                }
+                Item::VarWithLabel(var, label) => {
+                    if var == NODE_VAR_NAME {
+                        inners
+                            .get_mut(0)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .add_label(label.to_string());
+                    } else if var == NEXT_NODE_VAR_NAME {
+                        inners
+                            .get_mut(1)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .add_label(label.to_string());
+                    } else if var == RELATION_VAR_NAME {
+                        inners
+                            .get_mut(2)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .add_label(label.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid var_name: {:?}", var));
+                    }
+                }
+                _ => return Err(anyhow::anyhow!("Invalid set_list: {:?}", set_list)),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn update_inners_by_remove(inners: &mut Vec<Inner>, remove_list: Option<&Vec<Item>>) -> Result<()> {
+    if let Some(updates) = remove_list {
+        for update in updates {
+            match update {
+                Item::VarWithKey(var, k) => {
+                    if var == NODE_VAR_NAME {
+                        inners
+                            .get_mut(0)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
+                            .remove_property(k);
+                    } else if var == NEXT_NODE_VAR_NAME {
+                        inners
+                            .get_mut(1)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
+                            .remove_property(k);
+                    } else if var == RELATION_VAR_NAME {
+                        inners
+                            .get_mut(2)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or remove_list"))?
+                            .remove_property(k);
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid var_name: {:?}", var));
+                    }
+                }
+                Item::VarWithLabel(var, label) => {
+                    if var == NODE_VAR_NAME {
+                        inners
+                            .get_mut(0)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .remove_label(label);
+                    } else if var == NEXT_NODE_VAR_NAME {
+                        inners
+                            .get_mut(1)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid inners or set_list"))?
+                            .remove_label(label);
+                    } else if var == RELATION_VAR_NAME {
+                        return Err(anyhow::anyhow!("Can't remove the label of the relation"));
+                    } else {
+                        return Err(anyhow::anyhow!("Invalid var_name: {:?}", var));
+                    }
+                }
+                _ => return Err(anyhow::anyhow!("Invalid remove_list: {:?}", remove_list)),
+            }
+        }
+    }
+    Ok(())
 }
 
 fn add_uid_to_node(node: &mut Node) -> String {

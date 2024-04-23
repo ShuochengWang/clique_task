@@ -31,6 +31,15 @@ impl Node {
         self.properties.push((key, value));
     }
 
+    pub fn update_property(&mut self, key: String, value: String) {
+        for i in 0..self.properties.len() {
+            if self.properties[i].0 == key {
+                self.properties[i].1 = value;
+                break;
+            }
+        }
+    }
+
     pub(crate) fn to_query_string(&self) -> String {
         let mut res = String::from("(");
 
