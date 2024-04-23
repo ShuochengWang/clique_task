@@ -123,7 +123,7 @@ impl EncryptedGraph {
                         );
                         add_hash_to_relationship(single_query.relation.as_mut().unwrap());
 
-                        self.encrypt_query(&mut single_query);
+                        self.encrypt_query(&mut single_query)?;
                         single_query
                     };
 
@@ -137,18 +137,18 @@ impl EncryptedGraph {
             _ => return Err(anyhow::anyhow!("Invalid query: {:?}", query)),
         }
 
-        self.encrypt_query(&mut query);
+        self.encrypt_query(&mut query)?;
         self.execute_enc_query(query).await
     }
 
     async fn read(&self, mut query: CypherQuery) -> Result<Rows> {
         log::trace!("enter read with query: {:?}", query);
 
-        self.encrypt_query(&mut query);
+        self.encrypt_query(&mut query)?;
         self.execute_enc_query(query).await
     }
 
-    async fn update(&self, mut query: CypherQuery) -> Result<Rows> {
+    async fn update(&self, query: CypherQuery) -> Result<Rows> {
         log::trace!("enter update with query: {:?}", query);
 
         match (
@@ -176,15 +176,15 @@ impl EncryptedGraph {
                         return Err(anyhow::anyhow!("Data was attacked"));
                     }
 
-                    let mut inner = plain_row.inners()[0].clone();
+                    let inner = plain_row.inners()[0].clone();
                     let uid = inner
                         .get(MAGIC_UID_KEY)
                         .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
                         .clone();
 
                     let mut inners = vec![inner];
-                    update_inners_by_remove(&mut inners, query.remove_list.as_ref());
-                    update_inners_by_set(&mut inners, query.set_list.as_ref());
+                    update_inners_by_remove(&mut inners, query.remove_list.as_ref())?;
+                    update_inners_by_set(&mut inners, query.set_list.as_ref())?;
 
                     let single_query = {
                         let mut single_query = query.clone();
@@ -202,7 +202,7 @@ impl EncryptedGraph {
                                 get_inner_hash(&mut inners[0]),
                             ));
 
-                        self.encrypt_query(&mut single_query);
+                        self.encrypt_query(&mut single_query)?;
                         single_query
                     };
 
@@ -241,8 +241,8 @@ impl EncryptedGraph {
                         .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?
                         .clone();
 
-                    update_inners_by_remove(&mut inners, query.remove_list.as_ref());
-                    update_inners_by_set(&mut inners, query.set_list.as_ref());
+                    update_inners_by_remove(&mut inners, query.remove_list.as_ref())?;
+                    update_inners_by_set(&mut inners, query.set_list.as_ref())?;
 
                     let single_query = {
                         let mut single_query = query.clone();
@@ -272,7 +272,7 @@ impl EncryptedGraph {
                                 ),
                             ]);
 
-                        self.encrypt_query(&mut single_query);
+                        self.encrypt_query(&mut single_query)?;
                         single_query
                     };
 
@@ -290,7 +290,7 @@ impl EncryptedGraph {
     async fn delete(&self, mut query: CypherQuery) -> Result<Rows> {
         log::trace!("enter create with delete: {:?}", query);
 
-        self.encrypt_query(&mut query);
+        self.encrypt_query(&mut query)?;
         self.execute_enc_query(query).await
     }
 
@@ -306,7 +306,7 @@ impl EncryptedGraph {
         let mut queue: VecDeque<String> = VecDeque::new();
         let mut uid2node: HashMap<String, (Inner, String)> = HashMap::new();
 
-        let (src_uid, dst_uid) = {
+        let (_src_uid, dst_uid) = {
             let read_query = CypherQueryBuilder::new()
                 .MATCH()
                 .node(src.clone())

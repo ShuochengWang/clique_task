@@ -8,7 +8,7 @@ use anyhow::Result;
 async fn main() -> Result<()> {
     logger::init();
 
-    server::start_server().await;
+    server::start_server().await?;
 
     Ok(())
 }

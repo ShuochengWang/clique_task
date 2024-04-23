@@ -1,4 +1,3 @@
-use super::*;
 use crate::graph::EncryptedGraph;
 
 use anyhow::Result;
@@ -26,7 +25,7 @@ pub async fn start_server() -> Result<()> {
 
     let graph = EncryptedGraph::new(uri, user, pass).await?;
 
-    test_CRUD(&graph).await.unwrap();
+    test_crud(&graph).await.unwrap();
     test_find_shortest_path(&graph).await.unwrap();
 
     let addr = "127.0.0.1:8080"
@@ -62,7 +61,7 @@ fn load_keys(path: &str) -> Result<PrivateKeyDer<'static>> {
     Err(anyhow::anyhow!("there is no key"))
 }
 
-async fn test_CRUD(graph: &EncryptedGraph) -> Result<()> {
+async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
     {
         let query = CypherQueryBuilder::new()
             .CREATE()

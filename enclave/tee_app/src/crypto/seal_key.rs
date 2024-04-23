@@ -1,7 +1,7 @@
 use anyhow::Result;
 use libc::{c_int, O_RDONLY};
 use sgx_types::{
-    sgx_attributes_t, sgx_key_128bit_t, sgx_key_id_t, sgx_key_request_t, sgx_report_body_t,
+    sgx_attributes_t, sgx_key_128bit_t, sgx_key_id_t, sgx_key_request_t,
     sgx_report_data_t, sgx_report_t, sgx_target_info_t, SGX_KEYID_SIZE, SGX_KEYPOLICY_MRENCLAVE,
     SGX_KEYSELECT_SEAL, SGX_KEY_REQUEST_RESERVED2_BYTES, TSEAL_DEFAULT_FLAGSMASK,
     TSEAL_DEFAULT_MISCMASK,
@@ -102,7 +102,7 @@ pub fn get_key() -> [u8; 16] {
         key_policy,
         isv_svn: 0u16,
         reserved1: 0u16,
-        cpu_svn: unsafe { report.body.cpu_svn },
+        cpu_svn: report.body.cpu_svn,
         attribute_mask,
         key_id,
         misc_mask: TSEAL_DEFAULT_MISCMASK,
