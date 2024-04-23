@@ -1,6 +1,7 @@
 .env
 *.crt
 *.key
+*.csr
 Cargo.lock
 neo4j/data
 neo4j/logs

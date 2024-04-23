@@ -16,8 +16,8 @@ pub async fn start_server() -> Result<()> {
 
     let graph = EncryptedGraph::new(uri, user, pass).await?;
 
-    test_CRUD(&graph).await.unwrap();
-    test_find_shortest_path(&graph).await.unwrap();
+    // test_CRUD(&graph).await.unwrap();
+    // test_find_shortest_path(&graph).await.unwrap();
 
     Ok(())
 }
@@ -312,6 +312,11 @@ async fn test_CRUD(graph: &EncryptedGraph) -> Result<()> {
 }
 
 async fn test_find_shortest_path(graph: &EncryptedGraph) -> Result<()> {
+    //            c --> d
+    //            ⬆     ⬇
+    //      a --> b --> e --> f
+    //                  ⬇     ⬇
+    //                  h <-- g
     for node_name in ["a", "b", "c", "d", "e", "f", "g", "h"] {
         let query = CypherQueryBuilder::new()
             .CREATE()

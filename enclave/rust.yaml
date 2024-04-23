@@ -9,3 +9,6 @@ targets:
     copy:
       - files:
         - ../../.env
+        - ../certificates/server.crt
+        - ../certificates/server.key
+        - ../certificates/client_ca.crt

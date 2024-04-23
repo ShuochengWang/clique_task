@@ -6,7 +6,7 @@ authors = ["Shuocheng Wang <wangshch5@outlook.com>"]
 
 [dependencies]
 neo4rs = "0.7.1"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["full"] }
 uuid = { version = "1.8", features = ["v4"] }
 futures = "0.3.30"
 dotenv = "0.15.0"
@@ -19,3 +19,4 @@ blake3 = "1.5.1"
 anyhow = "1.0"
 base64 = "0.22.0"
 log = "0.4"
+tokio-rustls = "0.26.0"
