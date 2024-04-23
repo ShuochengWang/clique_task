@@ -44,8 +44,16 @@ impl Row {
         Self { inners }
     }
 
+    pub fn new_empty() -> Self {
+        Self { inners: vec![] }
+    }
+
     pub fn inners(&self) -> &Vec<Inner> {
         &self.inners
+    }
+
+    pub fn push(&mut self, inner: Inner) {
+        self.inners.push(inner);
     }
 }
 
@@ -61,7 +69,16 @@ impl Rows {
     pub fn new(rows: Vec<Row>) -> Self {
         Self { rows }
     }
+
+    pub fn new_empty() -> Self {
+        Self { rows: vec![] }
+    }
+
     pub fn rows(&self) -> &Vec<Row> {
         &self.rows
+    }
+
+    pub fn push(&mut self, row: Row) {
+        self.rows.push(row);
     }
 }

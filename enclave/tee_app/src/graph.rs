@@ -79,16 +79,61 @@ impl EncryptedGraph {
                 let enc_rows = self.read(read_query).await?;
                 let plain_rows = self.crypto.decrypt_and_verify(&enc_rows)?;
 
+                let mut res_rows = Rows::new_empty();
                 for plain_row in plain_rows {
                     if plain_row.inners().len() != 2 {
                         return Err(anyhow::anyhow!("Data was attacked"));
                     }
-                    let from_uid = plain_row.inners()[0].get(MAGIC_UID_KEY).ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
-                    let to_uid = plain_row.inners()[1].get(MAGIC_UID_KEY).ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
+                    let from_uid = plain_row.inners()[0]
+                        .get(MAGIC_UID_KEY)
+                        .ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
+                    let to_uid = plain_row.inners()[1]
+                        .get(MAGIC_UID_KEY)
+                        .ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
 
                     let single_query = {
                         let mut single_query = query.clone();
-                        single_query.node.as_mut().unwrap().
+                        single_query
+                            .node
+                            .as_mut()
+                            .unwrap()
+                            .add_property(MAGIC_UID_KEY.to_string(), from_uid.clone());
+                        single_query
+                            .next_node
+                            .as_mut()
+                            .unwrap()
+                            .add_property(MAGIC_UID_KEY.to_string(), to_uid.clone());
+                        add_uid_to_relationship(
+                            single_query.relationship.as_mut().unwrap(),
+                            &from_uid,
+                            &to_uid,
+                        );
+                        add_hash_to_relationship(single_query.relationship.as_mut().unwrap());
+
+                        self.encrypt_query(&mut single_query);
+                        single_query
+                    };
+
+                    let mut result = self
+                        .graph
+                        .execute(neo4rs::Query::from(single_query.to_query_string()))
+                        .await?;
+
+                    let return_list = get_return_vars(&single_query);
+                    let mut res_row = Row::new_empty();
+                    while let Ok(Some(row)) = result.next().await {
+                        for var in &return_list {
+                            if let Ok(n) = row.get::<neo4rs::Node>(var) {
+                                res_row.push(build_inner_from_neo4rs_node(n));
+                            }
+                            if let Ok(r) = row.get::<neo4rs::Relationship>(var) {
+                                res_row.push(build_inner_from_neo4rs_node(r));
+                            }
+                        }
+                    }
+
+                    if !res_row.is_empty() {
+                        res_rows.push(res_row);
                     }
                 }
             }
@@ -243,4 +288,29 @@ fn add_uid_to_relationship(relationship: &mut Relationship, from_uid: &String, t
     relationship
         .properties
         .push((MAGIC_UID_KEY.to_string(), format!("{}{}", from_uid, to_uid)));
+}
+
+fn get_return_vars(query: &CypherQuery) -> Vec<String> {
+    let mut vars = vec![];
+    if query.return_list.is_none() {
+        return vars;
+    }
+
+    for item in query.return_list.as_ref().unwrap() {
+        match item {
+            Item::Var(v) => vars.push(v.clone()),
+            // todo: support other items
+            _ => {}
+        }
+    }
+    vars
+}
+
+fn build_inner_from_neo4rs_node(node: neo4rs::Node) -> Inner {
+    let labels = node.labels.iter().map(|s| s.to_string()).collect();
+    let mut properties = vec![];
+    for k in node.keys() {
+        properties.push((k.to_string(), node.get::<String>(k)).unwrap());
+    }
+    Inner::new(labels, properties)
 }
