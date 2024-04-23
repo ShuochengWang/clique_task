@@ -427,8 +427,6 @@ impl EncryptedGraph {
             .execute(neo4rs::Query::from(enc_query.to_query_string()?))
             .await?;
 
-        log::trace!("{}", line!());
-
         let return_list = get_return_vars(&enc_query);
         let mut res_rows = Rows::new_empty();
         while let Ok(Some(row)) = result.next().await {

@@ -36,7 +36,7 @@ async fn test(graph: &EncryptedGraph) -> Result<()> {
             .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
             .await
             .unwrap();
-        println!("{:?}", result);
+        println!("{}\n{:?}", query.to_query_string()?, result);
     }
     {
         let query = CypherQueryBuilder::new()
@@ -66,7 +66,7 @@ async fn test(graph: &EncryptedGraph) -> Result<()> {
             .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
             .await
             .unwrap();
-        println!("{:?}", result);
+        println!("{}\n{:?}", query.to_query_string()?, result);
     }
     {
         let query = CypherQueryBuilder::new()
@@ -93,7 +93,219 @@ async fn test(graph: &EncryptedGraph) -> Result<()> {
             .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
             .await
             .unwrap();
-        println!("{:?}", result);
+        println!("{}\n{:?}", query.to_query_string()?, result);
     }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("n"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .RETURN(vec![Item::Var(String::from("n"))])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(Some("n"), vec!["label1"], vec![("k", "v1")]))
+            .relation(Relation::new(
+                Some("r"),
+                vec!["like"],
+                vec![("rk", "v1v3"), ("rk1", "v1v31")],
+            ))
+            .next_node(Node::new(
+                Some("m"),
+                vec!["label1"],
+                vec![("k", "v3"), ("k1", "vv3")],
+            ))
+            .RETURN(vec![
+                Item::Var(String::from("n")),
+                Item::Var(String::from("r")),
+                Item::Var(String::from("m")),
+            ])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("n"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .SET(vec![
+                Item::VarWithLabel(String::from("n"), String::from("label2")),
+                Item::VarWithKeyValue(
+                    String::from("n"),
+                    String::from("new_k"),
+                    String::from("new_v"),
+                ),
+            ])
+            .RETURN(vec![Item::Var(String::from("n"))])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("x"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .relation(Relation::new(
+                Some("xy"),
+                Vec::<String>::new(),
+                Vec::<(String, String)>::new(),
+            ))
+            .next_node(Node::new(
+                Some("y"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .SET(vec![
+                Item::VarWithLabel(String::from("x"), String::from("label3")),
+                Item::VarWithKeyValue(
+                    String::from("x"),
+                    String::from("new_k"),
+                    String::from("new_vv"),
+                ),
+                Item::VarWithKeyValue(
+                    String::from("y"),
+                    String::from("new_k2"),
+                    String::from("new_v"),
+                ),
+                Item::VarWithKeyValue(
+                    String::from("xy"),
+                    String::from("new_k"),
+                    String::from("new_v"),
+                ),
+            ])
+            .RETURN(vec![
+                Item::Var(String::from("x")),
+                Item::Var(String::from("xy")),
+                Item::Var(String::from("y")),
+            ])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("n"),
+                vec!["label3"],
+                vec![("new_k", "new_vv")],
+            ))
+            .REMOVE(vec![
+                Item::VarWithLabel(String::from("n"), String::from("label2")),
+                Item::VarWithKey(String::from("n"), String::from("new_k")),
+            ])
+            .RETURN(vec![Item::Var(String::from("n"))])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("x"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .relation(Relation::new(
+                Some("xy"),
+                vec!["like"],
+                vec![("new_k", "new_v")],
+            ))
+            .next_node(Node::new(
+                Some("y"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .REMOVE(vec![
+                Item::VarWithLabel(String::from("x"), String::from("label3")),
+                Item::VarWithKey(String::from("x"), String::from("new_k")),
+                Item::VarWithKey(String::from("y"), String::from("k2")),
+                Item::VarWithKey(String::from("xy"), String::from("rk1")),
+            ])
+            .RETURN(vec![
+                Item::Var(String::from("x")),
+                Item::Var(String::from("xy")),
+                Item::Var(String::from("y")),
+            ])
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(Some("n"), vec!["label1"], vec![("k", "v1")]))
+            .relation(Relation::new(
+                Some("r"),
+                Vec::<String>::new(),
+                Vec::<(String, String)>::new(),
+            ))
+            .next_node(Node::new(
+                None::<String>,
+                Vec::<String>::new(),
+                Vec::<(String, String)>::new(),
+            ))
+            .DELETE(
+                vec![Item::Var(String::from("n")), Item::Var(String::from("r"))],
+                false,
+            )
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+    {
+        let query = CypherQueryBuilder::new()
+            .MATCH()
+            .node(Node::new(
+                Some("n"),
+                vec!["label1"],
+                Vec::<(String, String)>::new(),
+            ))
+            .DELETE(vec![Item::Var(String::from("n"))], true)
+            .build();
+        let result = graph
+            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
+            .await
+            .unwrap();
+        println!("{}\n{:?}", query.to_query_string()?, result);
+    }
+
     Ok(())
 }
