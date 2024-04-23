@@ -55,6 +55,10 @@ impl Row {
     pub fn push(&mut self, inner: Inner) {
         self.inners.push(inner);
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.inners.is_empty()
+    }
 }
 
 impl Rows {
@@ -80,5 +84,9 @@ impl Rows {
 
     pub fn push(&mut self, row: Row) {
         self.rows.push(row);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
     }
 }

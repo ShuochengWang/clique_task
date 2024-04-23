@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 mod cypher;
 mod item;
 mod node;
-mod relationship;
+mod relation;
 mod rows;
 
 pub use self::cypher::{CRUDtype, CypherQuery, CypherQueryBuilder};
 pub use self::item::Item;
 pub use self::node::Node;
-pub use self::relationship::Relationship;
+pub use self::relation::Relation;
 pub use self::rows::{Inner, Row, Rows};
 
 #[cfg(test)]
@@ -54,7 +54,7 @@ mod tests {
                 vec!["label1", "label2"],
                 vec![("k1", "v1"), ("k2", "v2")],
             ))
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 vec!["rlabel1", "rlabel2"],
                 vec![("rk1", "rv1"), ("rk2", "rv2")],
@@ -98,7 +98,7 @@ mod tests {
                 vec![("k1", "nv1"), ("k2", "nv2")],
             ))
             .CREATE()
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 vec!["rlabel1"],
                 vec![("rk1", "rv1"), ("rk2", "rv2")],
@@ -147,7 +147,7 @@ mod tests {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(Some("a"), vec!["label1"], vec![("k2", "v2")]))
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 vec!["rlabel1"],
                 vec![("rk1", "rv1")],
@@ -216,7 +216,7 @@ mod tests {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(Some("a"), vec!["label1"], vec![("k1", "v1")]))
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 Vec::<String>::new(),
                 Vec::<(String, String)>::new(),
@@ -286,7 +286,7 @@ mod tests {
                 vec!["label1", "label2"],
                 vec![("k1", "v1")],
             ))
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 Vec::<String>::new(),
                 Vec::<(String, String)>::new(),
@@ -323,7 +323,7 @@ mod tests {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(Some("n"), vec!["label1"], vec![("k1", "v1")]))
-            .relationship(Relationship::new(
+            .relation(Relation::new(
                 Some("r"),
                 Vec::<String>::new(),
                 Vec::<(String, String)>::new(),

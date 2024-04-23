@@ -53,7 +53,7 @@ impl Crypto {
         let mut plain2enc = HashMap::new();
 
         self.enc_node(query.node.as_mut(), &mut plain2enc)?;
-        self.enc_relationship(query.relationship.as_mut(), &mut plain2enc)?;
+        self.enc_relationship(query.relation.as_mut(), &mut plain2enc)?;
         self.enc_node(query.next_node.as_mut(), &mut plain2enc)?;
         self.enc_items(query.return_list.as_mut(), &mut plain2enc)?;
         self.enc_items(query.set_list.as_mut(), &mut plain2enc)?;
@@ -69,6 +69,10 @@ impl Crypto {
         }
 
         Ok(())
+    }
+
+    pub fn decrypt_and_verify(&self, enc_rows: &Row) -> Result<Row> {
+        todo!("");
     }
 
     fn enc_node(
@@ -90,10 +94,10 @@ impl Crypto {
 
     fn enc_relationship(
         &self,
-        relationship: Option<&mut Relationship>,
+        relation: Option<&mut Relation>,
         plain2enc: &mut HashMap<String, String>,
     ) -> Result<()> {
-        if let Some(inner) = relationship {
+        if let Some(inner) = relation {
             for i in 0..inner.labels.len() {
                 inner.labels[i] = self.enc_string(&inner.labels[i], plain2enc)?;
             }

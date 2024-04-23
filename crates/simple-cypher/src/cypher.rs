@@ -3,7 +3,7 @@ use super::*;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CypherQuery {
     pub node: Option<Node>,
-    pub relationship: Option<Relationship>,
+    pub relation: Option<Relation>,
     pub next_node: Option<Node>,
     pub use_match: bool,
     pub use_create: bool,
@@ -16,7 +16,7 @@ pub struct CypherQuery {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CypherQueryBuilder {
     node: Option<Node>,
-    relationship: Option<Relationship>,
+    relation: Option<Relation>,
     next_node: Option<Node>,
     use_match: bool,
     use_create: bool,
@@ -46,7 +46,7 @@ impl CypherQuery {
     pub fn to_query_string(&self) -> Result<String> {
         match (
             &self.node,
-            &self.relationship,
+            &self.relation,
             &self.next_node,
             self.use_match,
             self.use_create,
@@ -167,7 +167,7 @@ impl CypherQuery {
     pub fn get_type(&self) -> Result<CRUDtype> {
         match (
             &self.node,
-            &self.relationship,
+            &self.relation,
             &self.next_node,
             self.use_match,
             self.use_create,
@@ -303,7 +303,7 @@ impl CypherQueryBuilder {
     pub fn new() -> Self {
         Self {
             node: None,
-            relationship: None,
+            relation: None,
             next_node: None,
             use_match: false,
             use_create: false,
@@ -321,10 +321,10 @@ impl CypherQueryBuilder {
         self
     }
 
-    pub fn relationship(mut self, relationship: Relationship) -> Self {
-        assert!(self.relationship.is_none());
+    pub fn relation(mut self, relation: Relation) -> Self {
+        assert!(self.relation.is_none());
 
-        self.relationship = Some(relationship);
+        self.relation = Some(relation);
         self
     }
 
@@ -368,7 +368,7 @@ impl CypherQueryBuilder {
     pub fn build(self) -> CypherQuery {
         CypherQuery {
             node: self.node,
-            relationship: self.relationship,
+            relation: self.relation,
             next_node: self.next_node,
             use_match: self.use_match,
             use_create: self.use_create,

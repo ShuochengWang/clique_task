@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Relationship {
+pub struct Relation {
     pub var_name: Option<String>,
     pub labels: Vec<String>,
     pub properties: Vec<(String, String)>,
 }
 
-impl Relationship {
+impl Relation {
     pub fn new(
         var_name: Option<impl Into<String>>,
         labels: Vec<impl Into<String>>,

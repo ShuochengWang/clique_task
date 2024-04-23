@@ -43,7 +43,7 @@ impl EncryptedGraph {
         // TODO: Solve the problem where the uid name may conflict with the property name in the query
         match (
             query.node.is_some(),
-            query.relationship.is_some(),
+            query.relation.is_some(),
             query.next_node.is_some(),
             query.use_match,
         ) {
@@ -56,18 +56,18 @@ impl EncryptedGraph {
             (true, true, true, false) => {
                 let from = add_uid_to_node(query.node.as_mut().unwrap());
                 let to = add_uid_to_node(query.next_node.as_mut().unwrap());
-                add_uid_to_relationship(query.relationship.as_mut().unwrap(), &from, &to);
+                add_uid_to_relationship(query.relation.as_mut().unwrap(), &from, &to);
 
                 add_hash_to_node(query.node.as_mut().unwrap());
                 add_hash_to_node(query.next_node.as_mut().unwrap());
-                add_hash_to_relationship(query.relationship.as_mut().unwrap());
+                add_hash_to_relationship(query.relation.as_mut().unwrap());
             }
             // case 3: MATCH (n:Label), (m:Label) CREATE (n)-[r:TYPE]->(m)
             (true, true, true, true) => {
                 // MATCH (n:Label), (m:Label) RETURN n, m
                 let read_query = {
                     let mut read_query = query.clone();
-                    read_query.relationship.take();
+                    read_query.relation.take();
                     read_query.use_create = false;
                     read_query.return_list.replace(vec![
                         Item::Var(NODE_VAR_NAME.to_string()),
@@ -76,20 +76,19 @@ impl EncryptedGraph {
                     read_query
                 };
 
-                let enc_rows = self.read(read_query).await?;
-                let plain_rows = self.crypto.decrypt_and_verify(&enc_rows)?;
+                let plain_rows = self.read(read_query).await?;
 
                 let mut res_rows = Rows::new_empty();
-                for plain_row in plain_rows {
+                for plain_row in plain_rows.rows() {
                     if plain_row.inners().len() != 2 {
                         return Err(anyhow::anyhow!("Data was attacked"));
                     }
                     let from_uid = plain_row.inners()[0]
                         .get(MAGIC_UID_KEY)
-                        .ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
+                        .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?;
                     let to_uid = plain_row.inners()[1]
                         .get(MAGIC_UID_KEY)
-                        .ok_or_else(|| Err(anyhow::anyhow!("Data was attacked")))?;
+                        .ok_or_else(|| anyhow::anyhow!("Data was attacked"))?;
 
                     let single_query = {
                         let mut single_query = query.clone();
@@ -104,36 +103,36 @@ impl EncryptedGraph {
                             .unwrap()
                             .add_property(MAGIC_UID_KEY.to_string(), to_uid.clone());
                         add_uid_to_relationship(
-                            single_query.relationship.as_mut().unwrap(),
+                            single_query.relation.as_mut().unwrap(),
                             &from_uid,
                             &to_uid,
                         );
-                        add_hash_to_relationship(single_query.relationship.as_mut().unwrap());
+                        add_hash_to_relationship(single_query.relation.as_mut().unwrap());
 
                         self.encrypt_query(&mut single_query);
                         single_query
                     };
 
                     let mut result = self
-                        .graph
-                        .execute(neo4rs::Query::from(single_query.to_query_string()))
+                        .database
+                        .execute(neo4rs::Query::from(single_query.to_query_string()?))
                         .await?;
 
                     let return_list = get_return_vars(&single_query);
-                    let mut res_row = Row::new_empty();
+                    let mut res_enc_row = Row::new_empty();
                     while let Ok(Some(row)) = result.next().await {
                         for var in &return_list {
                             if let Ok(n) = row.get::<neo4rs::Node>(var) {
-                                res_row.push(build_inner_from_neo4rs_node(n));
+                                res_enc_row.push(build_inner_from_neo4rs_node(n));
                             }
-                            if let Ok(r) = row.get::<neo4rs::Relationship>(var) {
-                                res_row.push(build_inner_from_neo4rs_node(r));
+                            if let Ok(r) = row.get::<neo4rs::Relation>(var) {
+                                res_enc_row.push(build_inner_from_neo4rs_relation(r));
                             }
                         }
                     }
 
-                    if !res_row.is_empty() {
-                        res_rows.push(res_row);
+                    if !res_enc_row.is_empty() {
+                        res_rows.push(self.crypto.decrypt_and_verify(&res_enc_row)?);
                     }
                 }
             }
@@ -170,7 +169,7 @@ fn confuse_var_name(query: &mut CypherQuery) {
             .as_mut()
             .and_then(|x| x.var_name.replace(NODE_VAR_NAME.to_string()));
         let var2 = query
-            .relationship
+            .relation
             .as_mut()
             .and_then(|x| x.var_name.replace(RELATIONSHIP_VAR_NAME.to_string()));
         let var3 = query
@@ -260,7 +259,7 @@ fn add_hash_to_node(inner: &mut Node) {
         .push((MAGIC_HASH_KEY.to_string(), hasher.finalize().to_string()));
 }
 
-fn add_hash_to_relationship(inner: &mut Relationship) {
+fn add_hash_to_relationship(inner: &mut Relation) {
     inner.labels.sort();
     inner.properties.sort();
 
@@ -284,8 +283,8 @@ fn add_uid_to_node(node: &mut Node) -> String {
     uid
 }
 
-fn add_uid_to_relationship(relationship: &mut Relationship, from_uid: &String, to_uid: &String) {
-    relationship
+fn add_uid_to_relationship(relation: &mut Relation, from_uid: &String, to_uid: &String) {
+    relation
         .properties
         .push((MAGIC_UID_KEY.to_string(), format!("{}{}", from_uid, to_uid)));
 }
@@ -307,10 +306,19 @@ fn get_return_vars(query: &CypherQuery) -> Vec<String> {
 }
 
 fn build_inner_from_neo4rs_node(node: neo4rs::Node) -> Inner {
-    let labels = node.labels.iter().map(|s| s.to_string()).collect();
+    let labels = node.labels().iter().map(|s| s.to_string()).collect();
     let mut properties = vec![];
     for k in node.keys() {
-        properties.push((k.to_string(), node.get::<String>(k)).unwrap());
+        properties.push((k.to_string(), node.get::<String>(k).unwrap()));
+    }
+    Inner::new(labels, properties)
+}
+
+fn build_inner_from_neo4rs_relation(relation: neo4rs::Relation) -> Inner {
+    let labels = vec![relation.typ().to_string()];
+    let mut properties = vec![];
+    for k in relation.keys() {
+        properties.push((k.to_string(), relation.get::<String>(k).unwrap()));
     }
     Inner::new(labels, properties)
 }
