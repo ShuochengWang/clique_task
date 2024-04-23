@@ -23,9 +23,7 @@ impl Node {
         }
     }
 
-    pub fn new_with_var(
-        var_name: impl Into<String>,
-    ) -> Self {
+    pub fn new_with_var(var_name: impl Into<String>) -> Self {
         Self {
             var_name: Some(var_name.into()),
             labels: vec![],

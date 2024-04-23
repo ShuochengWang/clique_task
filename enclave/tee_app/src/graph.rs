@@ -416,7 +416,7 @@ impl EncryptedGraph {
             }
 
             if !res_enc_row.is_empty() {
-                res_rows.push(self.crypto.decrypt_and_verify(&res_enc_row)?);
+                res_rows.push(self.crypto.decrypt_and_verify(res_enc_row)?);
             }
         }
         Ok(res_rows)

@@ -71,8 +71,12 @@ impl Crypto {
         Ok(())
     }
 
-    pub fn decrypt_and_verify(&self, enc_rows: &Row) -> Result<Row> {
-        todo!("");
+    pub fn decrypt_and_verify(&self, mut enc_row: Row) -> Result<Row> {
+        let mut enc2plain = HashMap::new();
+        for inner in enc_row.inners_mut() {
+            self.dec_inner(inner, &mut enc2plain)?;
+        }
+        Ok(enc_row)
     }
 
     fn enc_node(
@@ -145,11 +149,33 @@ impl Crypto {
         plain2enc: &mut HashMap<String, String>,
     ) -> Result<String> {
         if let Some(enc) = plain2enc.get(plain) {
-            Ok(add_prefix(enc))
+            Ok(enc.clone())
         } else {
-            let enc = self.encode(&self.encrypt(plain.as_bytes())?)?;
+            let enc = add_prefix(&self.encode(&self.encrypt(plain.as_bytes())?)?);
             plain2enc.insert(plain.clone(), enc.clone());
-            Ok(add_prefix(&enc))
+            Ok(enc)
+        }
+    }
+
+    fn dec_inner(&self, inner: &mut Inner, enc2plain: &mut HashMap<String, String>) -> Result<()> {
+        for i in 0..inner.labels.len() {
+            inner.labels[i] = self.dec_string(&inner.labels[i], enc2plain)?;
+        }
+        for i in 0..inner.properties.len() {
+            inner.properties[i].0 = self.dec_string(&inner.properties[i].0, enc2plain)?;
+            inner.properties[i].1 = self.dec_string(&inner.properties[i].1, enc2plain)?;
+        }
+        Ok(())
+    }
+
+    fn dec_string(&self, enc: &String, enc2plain: &mut HashMap<String, String>) -> Result<String> {
+        if let Some(plain) = enc2plain.get(enc) {
+            Ok(plain.clone())
+        } else {
+            let plain =
+                String::from_utf8(self.decrypt(&self.decode(remove_prefix(enc)?.as_bytes())?)?)?;
+            enc2plain.insert(enc.clone(), plain.clone());
+            Ok(plain)
         }
     }
 }
@@ -158,7 +184,7 @@ fn add_prefix(s: &str) -> String {
     format!("{}{}", MAGIC_PREFIX, s)
 }
 
-fn remove_prefix(s: &str) -> Result<&str> {
+fn remove_prefix(s: &str) -> Result<String> {
     if !s.starts_with(MAGIC_PREFIX) {
         return Err(anyhow::anyhow!(
             "There is no MAGIC_LABEL_KEY_PREFIX in this str: {}",
@@ -166,5 +192,5 @@ fn remove_prefix(s: &str) -> Result<&str> {
         ));
     }
 
-    Ok(&s[MAGIC_PREFIX.len()..])
+    Ok(s[MAGIC_PREFIX.len()..].to_string())
 }

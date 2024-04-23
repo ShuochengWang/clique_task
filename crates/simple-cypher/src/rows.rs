@@ -104,6 +104,10 @@ impl Row {
         &self.inners
     }
 
+    pub fn inners_mut(&mut self) -> &mut Vec<Inner> {
+        &mut self.inners
+    }
+
     pub fn push(&mut self, inner: Inner) {
         self.inners.push(inner);
     }

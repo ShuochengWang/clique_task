@@ -96,7 +96,18 @@ impl CypherQuery {
                     self.to_return_query_string()?
                 ));
             }
-            (Some(node), Some(r), Some(next_node), true, false, Some(_), None, None, None, false) => {
+            (
+                Some(node),
+                Some(r),
+                Some(next_node),
+                true,
+                false,
+                Some(_),
+                None,
+                None,
+                None,
+                false,
+            ) => {
                 return Ok(format!(
                     "MATCH {}-{}->{} {}",
                     node.to_query_string(),
