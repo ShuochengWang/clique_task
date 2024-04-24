@@ -54,15 +54,15 @@ async fn main() -> Result<()> {
 async fn execute_query(query: CypherQuery, stream: &mut TcpStream) -> Result<Rows> {
     let serialized_query = query.serialize()?;
     stream.write_u64(serialized_query.len() as u64).await?;
-    println!("write {}", serialized_query.len());
+    // println!("write {}", serialized_query.len());
     stream.write_all(serialized_query.as_bytes()).await?;
-    println!("write {} bytes", serialized_query.len());
+    // println!("write {} bytes", serialized_query.len());
 
     let len = stream.read_u64().await? as usize;
-    println!("read {}", len);
+    // println!("read {}", len);
     let mut buf = vec![0u8; len];
     stream.read_exact(&mut buf).await?;
-    println!("read {} bytes", len);
+    // println!("read {} bytes", len);
     let serialized_result = String::from_utf8(buf)?;
     Rows::deserialize(&serialized_result)
 }

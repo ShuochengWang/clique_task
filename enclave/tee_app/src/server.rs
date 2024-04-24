@@ -72,23 +72,23 @@ pub async fn start_server() -> Result<()> {
 
             loop {
                 let len = stream.read_u64().await? as usize;
-                log::info!("read {}", len);
+                log::trace!("read {}", len);
                 // todo: limit max len
                 let mut buf = vec![0u8; len];
                 stream.read_exact(&mut buf).await?;
-                log::info!("read {} bytes", len);
+                log::trace!("read {} bytes", len);
 
                 let serialized_query = String::from_utf8(buf)?;
                 let query = CypherQuery::deserialize(&serialized_query)?;
-                log::info!("query: {:?}", query);
+                log::trace!("query: {:?}", query);
                 let result = cloned_graph.execute_query(query).await?;
-                log::info!("execute result: {:?}", result);
+                log::trace!("execute result: {:?}", result);
 
                 let text = result.serialize()?;
                 stream.write_u64(text.len() as u64).await?;
-                log::info!("write {}", text.len());
+                log::trace!("write {}", text.len());
                 stream.write_all(text.as_bytes()).await?;
-                log::info!("write {} bytes", text.len());
+                log::trace!("write {} bytes", text.len());
             }
 
             Ok(()) as Result<()>
