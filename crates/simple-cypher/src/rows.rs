@@ -1,4 +1,5 @@
 use super::*;
+use std::cmp::PartialEq;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Inner {
@@ -90,6 +91,36 @@ impl Inner {
         Node::new(None::<String>, self.labels.clone(), self.properties.clone())
     }
 }
+
+impl PartialEq for Inner {
+    fn eq(&self, other: &Self) -> bool {
+        if self.labels.len() != other.labels.len()
+            || self.properties.len() != other.properties.len()
+        {
+            return false;
+        }
+
+        let mut l1 = self.labels.clone();
+        l1.sort();
+        let mut l2 = other.labels.clone();
+        l2.sort();
+        if l1 != l2 {
+            return false;
+        }
+
+        let mut p1 = self.properties.clone();
+        p1.sort();
+        let mut p2 = other.properties.clone();
+        p2.sort();
+        if p1 != p2 {
+            return false;
+        }
+
+        true
+    }
+}
+
+impl Eq for Inner {}
 
 impl Row {
     pub fn new(inners: Vec<Inner>) -> Self {

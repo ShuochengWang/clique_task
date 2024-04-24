@@ -61,7 +61,8 @@ pub async fn start_server() -> Result<()> {
     log::info!("start listening...");
 
     loop {
-        let (mut stream, peer_addr) = listener.accept().await?;
+        let cloned_graph = graph.clone();
+        let (mut stream, _peer_addr) = listener.accept().await?;
         log::info!("accept");
 
         // let acceptor = acceptor.clone();
@@ -69,15 +70,26 @@ pub async fn start_server() -> Result<()> {
         let fut = async move {
             // let mut stream = acceptor.accept(stream).await?;
 
-            let mut buf = [0; 4096];
-            let n = stream.read(&mut buf).await?;
-            println!("The bytes: {:?}", &buf[..n]);
+            loop {
+                let len = stream.read_u64().await? as usize;
+                log::info!("read {}", len);
+                // todo: limit max len
+                let mut buf = vec![0u8; len];
+                stream.read_exact(&mut buf).await?;
+                log::info!("read {} bytes", len);
 
-            // let mut serialized_query = String::new();
-            // stream.read_to_string(&mut serialized_query)?;
+                let serialized_query = String::from_utf8(buf)?;
+                let query = CypherQuery::deserialize(&serialized_query)?;
+                log::info!("query: {:?}", query);
+                let result = cloned_graph.execute_query(query).await?;
+                log::info!("execute result: {:?}", result);
 
-            // let query = CypherQuery::deserialize(serialized_query)?;
-            // let result = graph.clone().execute_query(query).await?;
+                let text = result.serialize()?;
+                stream.write_u64(text.len() as u64).await?;
+                log::info!("write {}", text.len());
+                stream.write_all(text.as_bytes()).await?;
+                log::info!("write {} bytes", text.len());
+            }
 
             Ok(()) as Result<()>
         };
@@ -88,8 +100,6 @@ pub async fn start_server() -> Result<()> {
             }
         });
     }
-
-    println!("!!!!!!!!!");
 
     Ok(())
 }
