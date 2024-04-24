@@ -77,25 +77,25 @@ neo4j 使用 cypher 图查询语言，其中顶点和边，都是由若干个标
 
 可以看到，设计中有很多 trade-off，实现强完整性的开销过大，因为我们设计实现了弱完整性机制:
 
-###### 原始的明文节点：
+**原始的明文节点：** 
 
 标签：[plain_label1, plain_label2, ...] 
 
 属性：[(plain_key1: plain_value1), (plain_key2: plain_value2), ...]
 
-###### 新建节点和边的时候都添加一个唯一的 uid 到属性中，得到
+**新建节点和边的时候都添加一个唯一的 uid 到属性中，得到** 
 
 标签：[plain_label1, plain_label2, ...] 
 
 属性：[(uid: xxx)， (plain_key1: plain_value1), (plain_key2: plain_value2), ...]
 
-###### 对所有标签和属性计算哈希值，并把哈希值添加到属性中，得到
+**对所有标签和属性计算哈希值，并把哈希值添加到属性中，得到**
 
 标签：[plain_label1, plain_label2, ...] 
 
 属性：[(hash: xxx)， (uid: xxx)， (plain_key1: plain_value1), (plain_key2: plain_value2), ...]
 
-###### 对所有标签和属性进行加密并 base64 编码，得到
+**对所有标签和属性进行加密并 base64 编码，得到**
 
 标签：[enc_label1, enc_label2, ...] 
 
@@ -107,7 +107,7 @@ neo4j 使用 cypher 图查询语言，其中顶点和边，都是由若干个标
 
 每次更新数据时都相应修改哈希值并写回，如果 neo4j 假装给我们写回，那么后续我们只能获得旧版本的完整数据。
 
-###### 特殊处理边的 uid
+**特殊处理边的 uid** 
 
 边的 uid 是边的起点和终点的两个节点的 uid 的组合，在新建边的时候可以唯一确定。
 
@@ -115,4 +115,60 @@ neo4j 使用 cypher 图查询语言，其中顶点和边，都是由若干个标
 
 ### 环境部署与测试
 
+开发环境：docker + neo4j + occlum (Intel SGX LibOS)
+
+1. 配置 docker 环境
+2. 配置 .env 环境变量: 在`./`目录下创建 `.env` 文件，内容如下：
+```
+DATABASE_URI=bolt://127.0.0.1:7687
+DATABASE_USERNAME=neo4j
+DATABASE_PASSWORD=your_password
+NEO4J_AUTH=neo4j/your_password
+```
+3. 配置 neo4j 的 ssl certificates （neo4j 3.5 以后版本需要配置才能启用加密通信）
+```
+mkdir -p ./neo4j/certificates/bolt/revoked
+mkdir -p ./neo4j/certificates/bolt/trusted
+
+cd ./neo4j/certificates/bolt
+openssl req -newkey rsa:2048 -nodes -keyout private.key -x509 -days 365 -out public.crt
+```
+4. 启动 docker compose
+```
+docker-compose up -d
+```
+5. 启动 enclave
+```
+docker attach occlum
+cd ~/code/enclave
+./run_tee_app_on_occlum.sh
+```
+6. 启动 client
+```
+docker attach client
+cd ~/code/client
+cargo run
+```
+
 ### 实现细节
+
+#### 最短路
+
+通过 BFS 实现，首先获取起点终点的 uid，然后将 uid 作为唯一标识来读取边和相邻节点，并且用边的 uid 验证关联关系。
+在BFS每一步中，保存上一个节点的 uid，用于还原路径。
+BFS 找到终点后，再倒退还原路径返回给用户。
+
+#### 构造图查询
+
+直接使用 neo4j 原生的字符串图查询比较复杂，难以提取其中的标签属性进行加密替换，因此实现了 `simple-cypher` crate，用于以操作链的方式构建图查询，并支持序列化反序列化，以及生成 neo4j 原生图查询。
+
+#### 将原生图查询拆解为多段进行
+例如 `MATCH (n:Label), (m:Label) CREATE (n)-[r:TYPE]->(m)`，创建新的边，在执行过程中，拆解为：
+1. `MATCH (n:Label), (m:Label) RETURN n, m`，获取符合条件的节点，根据其 uid 构造新边的 uid
+2. `MATCH (n:Label), (m:Label) CREATE (n)-[r:TYPE { uid: xxx, hash: xxx}]->(m)`，构造好 uid 和 hash 后再构造新的图查询并执行
+
+在 `SET` 和 `REMOVE` 中也有类似机制，更新数据之前先读取数据，然后构造好 hash，再将 hash 添加到图查询中并执行
+
+#### client 和 server 之间的加密通信
+
+使用 tokio + tls，具体是 `tokio_rustls` crate 实现，编写了 client 和 server 之间双向互认的代码逻辑，但是 `tokio_rustls` 似乎不支持自签名证书，而我也没有第三方CA来签证书，未能通过测试，实际代码中注释掉了 tls 相关逻辑。
