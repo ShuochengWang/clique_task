@@ -153,6 +153,20 @@ cd ~/code/client
 cargo run
 ```
 
+**CRUD 操作测试结果**
+![](./image/crud.png)
+
+**最短路 测试结果**
+图结构如下所示：
+```
+            c --> d
+            ⬆     ⬇
+      a --> b --> e --> f
+                  ⬇     ⬇
+                  h <-- g
+```
+![](./image/shortest_path.png)
+
 ### 实现细节
 
 #### 最短路
