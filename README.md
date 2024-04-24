@@ -205,6 +205,10 @@ BFS 找到终点后，再倒退还原路径返回给用户。
 
 在 `SET` 和 `REMOVE` 中也有类似机制，更新数据之前先读取数据，然后构造好 hash，再将 hash 添加到图查询中并执行
 
+#### enclave 和 neo4j 之间的加密通信
+
+使用 neo4j 自身支持的 Bolt 协议，可以实现加密通信，neo4j 3.5 版本后需要自己配置相关证书才能启用加密通信。
+
 #### client 和 server 之间的加密通信
 
 使用 tokio + tls，具体是 `tokio_rustls` crate 实现，编写了 client 和 server 之间双向互认的代码逻辑，但是 `tokio_rustls` 似乎不支持自签名证书，而我也没有第三方CA来签证书，未能通过测试，实际代码中注释掉了 tls 相关逻辑。
