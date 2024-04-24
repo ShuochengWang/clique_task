@@ -169,6 +169,16 @@ cargo run
 
 ### 实现细节
 
+#### 加密算法与哈希算法
+
+加密算法采用 AES-ECB-128，哈希算法采用 BLAKE-3
+
+#### Sealing
+
+有两种方案，一是使用 occlum 的加密文件系统 SEFS，那么保存进去的数据都是默认 Sealing 的。二是从 SGX 获取 key 来做 Sealing，因为是基于面试目的的 task，我实现了第二种方案。
+
+首先通过 occlum 的 ioctl 来调用 `create_report`，获取 `cpu_svn` 等数据，然后再基于这些数据通过 ioctl 调用 `get_key` 来获取 `MRENCLAVE` 模式下的 128 位的 key。
+
 #### 最短路
 
 通过 BFS 实现，首先获取起点终点的 uid，然后将 uid 作为唯一标识来读取边和相邻节点，并且用边的 uid 验证关联关系。
