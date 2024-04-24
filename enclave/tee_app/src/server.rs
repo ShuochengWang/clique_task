@@ -176,40 +176,68 @@ impl ClientCertVerifier for MyClientCertVerifier {
     }
 }
 
+async fn init_test(graph: &EncryptedGraph) -> Result<()> {
+    let query = CypherQueryBuilder::new()
+        .MATCH()
+        .node(Node::new(
+            Some("n"),
+            Vec::<String>::new(),
+            Vec::<(String, String)>::new(),
+        ))
+        .DELETE(vec![Item::Var(String::from("n"))], true)
+        .build();
+
+    graph.execute_query(query).await?;
+
+    Ok(())
+}
+
 async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
+    init_test(graph).await?;
+
     {
         let query = CypherQueryBuilder::new()
             .CREATE()
             .node(Node::new(
                 Some("a"),
-                vec!["label1"],
-                vec![("k", "v1"), ("k1", "vv1"), ("k2", "vvv1")],
+                vec!["Student"],
+                vec![("name", "Alice"), ("age", "25")],
             ))
             .RETURN(vec![Item::Var(String::from("a"))])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "Alice".to_string()),
+                    ("age".to_string(), "25".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .CREATE()
             .node(Node::new(
                 Some("n"),
-                vec!["label1"],
-                vec![("k", "v2"), ("k1", "vv2"), ("k2", "vvv2")],
+                vec!["Student"],
+                vec![("name", "Bob"), ("age", "23"), ("home", "beijing")],
             ))
             .relation(Relation::new(
                 Some("r"),
-                vec!["knows"],
-                vec![("rk", "v2v3"), ("rk1", "v2v31")],
+                vec!["Knows"],
+                vec![("time", "1year")],
             ))
             .next_node(Node::new(
                 Some("m"),
-                vec!["label1"],
-                vec![("k", "v3"), ("k1", "vv3"), ("k2", "vvv3")],
+                vec!["Student"],
+                vec![("name", "John"), ("age", "24"), ("home", "jiangxi")],
             ))
             .RETURN(vec![
                 Item::Var(String::from("n")),
@@ -217,25 +245,58 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 Item::Var(String::from("m")),
             ])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "Bob".to_string()),
+                    ("age".to_string(), "23".to_string()),
+                    ("home".to_string(), "beijing".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[1],
+            Inner::new(
+                vec!["Knows".to_string()],
+                vec![("time".to_string(), "1year".to_string())]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[2],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "John".to_string()),
+                    ("age".to_string(), "24".to_string()),
+                    ("home".to_string(), "jiangxi".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
-            .node(Node::new(Some("n"), vec!["label1"], vec![("k", "v1")]))
+            .node(Node::new(
+                Some("n"),
+                vec!["Student"],
+                vec![("name", "Alice")],
+            ))
             .relation(Relation::new(
                 Some("r"),
-                vec!["like"],
-                vec![("rk", "v1v3"), ("rk1", "v1v31")],
+                vec!["Like"],
+                vec![("time", "1month"), ("public", "yes")],
             ))
             .next_node(Node::new(
                 Some("m"),
-                vec!["label1"],
-                vec![("k", "v3"), ("k1", "vv3")],
+                vec!["Student"],
+                vec![("name", "John"), ("age", "24")],
             ))
             .CREATE()
             .RETURN(vec![
@@ -244,41 +305,73 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 Item::Var(String::from("m")),
             ])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "Alice".to_string()),
+                    ("age".to_string(), "25".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[1],
+            Inner::new(
+                vec!["Like".to_string()],
+                vec![
+                    ("time".to_string(), "1month".to_string()),
+                    ("public".to_string(), "yes".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[2],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "John".to_string()),
+                    ("age".to_string(), "24".to_string()),
+                    ("home".to_string(), "jiangxi".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("n"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .RETURN(vec![Item::Var(String::from("n"))])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(result.rows().len(), 3);
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
-            .node(Node::new(Some("n"), vec!["label1"], vec![("k", "v1")]))
+            .node(Node::new(Some("n"), vec!["Student"], vec![("age", "25")]))
             .relation(Relation::new(
                 Some("r"),
-                vec!["like"],
-                vec![("rk", "v1v3"), ("rk1", "v1v31")],
+                vec!["Like"],
+                vec![("time", "1month")],
             ))
             .next_node(Node::new(
                 Some("m"),
-                vec!["label1"],
-                vec![("k", "v3"), ("k1", "vv3")],
+                vec!["Student"],
+                vec![("home", "jiangxi"), ("age", "24")],
             ))
             .RETURN(vec![
                 Item::Var(String::from("n")),
@@ -286,70 +379,102 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 Item::Var(String::from("m")),
             ])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "Alice".to_string()),
+                    ("age".to_string(), "25".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[1],
+            Inner::new(
+                vec!["Like".to_string()],
+                vec![
+                    ("time".to_string(), "1month".to_string()),
+                    ("public".to_string(), "yes".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[2],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "John".to_string()),
+                    ("age".to_string(), "24".to_string()),
+                    ("home".to_string(), "jiangxi".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("n"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .SET(vec![
-                Item::VarWithLabel(String::from("n"), String::from("label2")),
+                Item::VarWithLabel(String::from("n"), String::from("Undergraduate")),
                 Item::VarWithKeyValue(
                     String::from("n"),
-                    String::from("new_k"),
-                    String::from("new_v"),
+                    String::from("univ"),
+                    String::from("Nanjing univ"),
                 ),
             ])
             .RETURN(vec![Item::Var(String::from("n"))])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(result.rows().len(), 3);
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("x"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .relation(Relation::new(
                 Some("xy"),
-                Vec::<String>::new(),
+                vec!["Knows"],
                 Vec::<(String, String)>::new(),
             ))
             .next_node(Node::new(
                 Some("y"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .SET(vec![
-                Item::VarWithLabel(String::from("x"), String::from("label3")),
+                Item::VarWithLabel(String::from("x"), String::from("Intern")),
                 Item::VarWithKeyValue(
                     String::from("x"),
-                    String::from("new_k"),
-                    String::from("new_vv"),
+                    String::from("location"),
+                    String::from("nanjing"),
                 ),
                 Item::VarWithKeyValue(
                     String::from("y"),
-                    String::from("new_k2"),
-                    String::from("new_v"),
+                    String::from("location"),
+                    String::from("nanjing"),
                 ),
                 Item::VarWithKeyValue(
                     String::from("xy"),
-                    String::from("new_k"),
-                    String::from("new_v"),
+                    String::from("level"),
+                    String::from("mid"),
                 ),
             ])
             .RETURN(vec![
@@ -358,55 +483,107 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 Item::Var(String::from("y")),
             ])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec![
+                    "Student".to_string(),
+                    "Intern".to_string(),
+                    "Undergraduate".to_string()
+                ],
+                vec![
+                    ("name".to_string(), "Bob".to_string()),
+                    ("age".to_string(), "23".to_string()),
+                    ("home".to_string(), "beijing".to_string()),
+                    ("univ".to_string(), "Nanjing univ".to_string()),
+                    ("location".to_string(), "nanjing".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[1],
+            Inner::new(
+                vec!["Knows".to_string()],
+                vec![
+                    ("time".to_string(), "1year".to_string()),
+                    ("level".to_string(), "mid".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[2],
+            Inner::new(
+                vec!["Student".to_string(), "Undergraduate".to_string()],
+                vec![
+                    ("name".to_string(), "John".to_string()),
+                    ("age".to_string(), "24".to_string()),
+                    ("home".to_string(), "jiangxi".to_string()),
+                    ("univ".to_string(), "Nanjing univ".to_string()),
+                    ("location".to_string(), "nanjing".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("n"),
-                vec!["label3"],
-                vec![("new_k", "new_vv")],
+                vec!["Intern"],
+                vec![("location", "nanjing")],
             ))
             .REMOVE(vec![
-                Item::VarWithLabel(String::from("n"), String::from("label2")),
-                Item::VarWithKey(String::from("n"), String::from("new_k")),
+                Item::VarWithLabel(String::from("n"), String::from("Intern")),
+                Item::VarWithKey(String::from("n"), String::from("location")),
             ])
             .RETURN(vec![Item::Var(String::from("n"))])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string(), "Undergraduate".to_string()],
+                vec![
+                    ("name".to_string(), "Bob".to_string()),
+                    ("age".to_string(), "23".to_string()),
+                    ("home".to_string(), "beijing".to_string()),
+                    ("univ".to_string(), "Nanjing univ".to_string()),
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("x"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .relation(Relation::new(
                 Some("xy"),
-                vec!["like"],
-                vec![("new_k", "new_v")],
+                vec!["Like"],
+                vec![("time", "1month")],
             ))
             .next_node(Node::new(
                 Some("y"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .REMOVE(vec![
-                Item::VarWithLabel(String::from("x"), String::from("label3")),
-                Item::VarWithKey(String::from("x"), String::from("new_k")),
-                Item::VarWithKey(String::from("y"), String::from("k2")),
-                Item::VarWithKey(String::from("xy"), String::from("rk1")),
+                Item::VarWithLabel(String::from("x"), String::from("Undergraduate")),
+                Item::VarWithKey(String::from("x"), String::from("age")),
+                Item::VarWithKey(String::from("y"), String::from("age")),
+                Item::VarWithKey(String::from("xy"), String::from("public")),
             ])
             .RETURN(vec![
                 Item::Var(String::from("x")),
@@ -414,16 +591,49 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 Item::Var(String::from("y")),
             ])
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
+
+        assert_eq!(
+            result.rows()[0].inners()[0],
+            Inner::new(
+                vec!["Student".to_string()],
+                vec![
+                    ("name".to_string(), "Alice".to_string()),
+                    ("univ".to_string(), "Nanjing univ".to_string())
+                ]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[1],
+            Inner::new(
+                vec!["Like".to_string()],
+                vec![("time".to_string(), "1month".to_string())]
+            )
+        );
+        assert_eq!(
+            result.rows()[0].inners()[2],
+            Inner::new(
+                vec!["Student".to_string(), "Undergraduate".to_string()],
+                vec![
+                    ("name".to_string(), "John".to_string()),
+                    ("home".to_string(), "jiangxi".to_string()),
+                    ("univ".to_string(), "Nanjing univ".to_string()),
+                    ("location".to_string(), "nanjing".to_string())
+                ]
+            )
+        );
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
-            .node(Node::new(Some("n"), vec!["label1"], vec![("k", "v1")]))
+            .node(Node::new(
+                Some("n"),
+                vec!["Student"],
+                vec![("name", "Alice")],
+            ))
             .relation(Relation::new(
                 Some("r"),
                 Vec::<String>::new(),
@@ -439,33 +649,33 @@ async fn test_crud(graph: &EncryptedGraph) -> Result<()> {
                 false,
             )
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
     }
     {
         let query = CypherQueryBuilder::new()
             .MATCH()
             .node(Node::new(
                 Some("n"),
-                vec!["label1"],
+                vec!["Student"],
                 Vec::<(String, String)>::new(),
             ))
             .DELETE(vec![Item::Var(String::from("n"))], true)
             .build();
-        let result = graph
-            .execute_query(CypherQuery::deserialize(&query.serialize()?)?)
-            .await
-            .unwrap();
-        println!("{}\n{:?}", query.to_query_string()?, result);
+
+        println!("{}", query.to_query_string()?);
+        let result = graph.execute_query(query).await.unwrap();
+        println!("    {:?}", result);
     }
 
     Ok(())
 }
 
 async fn test_find_shortest_path(graph: &EncryptedGraph) -> Result<()> {
+    init_test(graph).await?;
+
     //            c --> d
     //            ⬆     ⬇
     //      a --> b --> e --> f
